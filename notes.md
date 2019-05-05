@@ -13,6 +13,18 @@ Inode
  - unique ID
  - filename (*char [32])
  
+| Data                   | Bytes     |
+|------------------------|-----------|
+| unique_id              | 32        |
+| size                   | 16        |
+| last_modified          | 32        |
+| created                | 32        |
+| filename               | 64        |
+| 15 direct datapointers | 15*32=480 |
+| data_array             | 32        |
+| data                   | 3408      |
+ 
+ 
 Disk / root Inode
  - root inode stored at 0
  - contains info about disk (available blocks)
