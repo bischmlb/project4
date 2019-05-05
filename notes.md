@@ -48,3 +48,7 @@ Disk / root Inode
  - File count is limited by block count (2499)
  - Maximum file / dir count is block count - 1 (root inode)
  - continguos space found via bitmap contained in root inode
+
+Implementation notes
+ - Use fseek() to navigate the file when read / writing blocks
+ - mode / access for inodes
