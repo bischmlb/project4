@@ -13,6 +13,8 @@ Inode
  - unique ID
  - filename (*char [32])
  
+Standard Inode
+ 
 | Data                   | Bytes     |
 |------------------------|-----------|
 | unique_id              | 32        |
@@ -23,6 +25,20 @@ Inode
 | 15 direct datapointers | 15*32=480 |
 | data_array             | 32        |
 | data                   | 3408      |
+ 
+Root Inode
+
+| Data                   | Bytes     |
+|------------------------|-----------|
+| unique_id              | 32        |
+| size                   | 16        |
+| last_modified          | 32        |
+| created                | 32        |
+| filename               | 64        |
+| 15 direct datapointers | 15*32=480 |
+| data_array             | 32        |
+| block_bitmap           | 313       |
+| leftover_bytes         | 3095      |
  
  
 Disk / root Inode
