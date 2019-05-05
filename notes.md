@@ -45,6 +45,6 @@ Disk / root Inode
  - root inode stored at 0
  - contains info about disk (available blocks)
  - Free space is found via root / disk inode.
- - File count is limited by block count.
+ - File count is limited by block count (2499)
  - Maximum file / dir count is block count - 1 (root inode)
  - continguos space found via bitmap contained in root inode
