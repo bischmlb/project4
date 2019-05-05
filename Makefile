@@ -20,4 +20,4 @@ lfs: $(OBJS)
 	$(GCC) $(OBJS) $(LIBS) $(CFLAGS) -o lfs
 
 clean:
-	rm -f $(OBJS) lfs
+	rm -f $(OBJS) lfs disk

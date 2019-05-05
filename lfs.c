@@ -74,7 +74,7 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 	filler(buf, "hello", NULL, 0);
 	filler(buf, "testdirectory", NULL, 0);
 	for (int i = 0; i < MAX_DIRECTORIES; i++){
-		//filler(buf, dirs[0], NULL, 0);
+		filler(buf, dirs[i], NULL, 0);
 		printf("directories:%s \n", dirs[i]);
 	}
 
@@ -100,7 +100,7 @@ int lfs_release(const char *path, struct fuse_file_info *fi) {
 
 int lfs_mkdir(const char *path, mode_t mode){
 	int res;
-	//printf("THIS: %s \n", path);
+	printf("THIS: %s \n", path);
 	if(mkdirID == MAX_DIRECTORIES){
 		return -errno;
 	}
