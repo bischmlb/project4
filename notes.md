@@ -1,7 +1,8 @@
 # Notes
 
 Block Size
- - 4096 bytes (typical size of memory page)
+ - 4096 bytes (typical size of memory page, 1:1 mapping when reading / writting block data)
+ - a smaller block size could allow for less waste
 
 Inode
  - access / mode bitmap?
