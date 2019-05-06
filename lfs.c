@@ -12,15 +12,17 @@ int lfs_read( const char *, char *, size_t, off_t, struct fuse_file_info * );
 int lfs_write( const char *, char *, size_t, off_t, struct fuse_file_info * );
 int lfs_release(const char *path, struct fuse_file_info *fi);
 int lfs_mkdir(const char *path, mode_t mode);
+int lfs_mknod(const char *path, mode_t mode, dev_t dev);
+int lfs_truncate(const char *path, off_t size, struct fuse_file_info *fi);
 
 static struct fuse_operations lfs_oper = {
 	.getattr	= lfs_getattr,
 	.readdir	= lfs_readdir,
-	.mknod = NULL,
+	.mknod = lfs_mknod,
 	.mkdir = lfs_mkdir,
 	.unlink = NULL,
 	.rmdir = NULL,
-	.truncate = NULL,
+	.truncate = lfs_truncate,
 	.open	= lfs_open,
 	.read	= lfs_read,
 	.release = lfs_release,
@@ -37,6 +39,25 @@ static char *dirs[MAX_DIRECTORIES][MAX_DIRECTORY_SIZE];
 static int mkdirID = 0;
 static int disk = -1;
 static char *diskPath = "disk";
+
+int lfs_mknod(const char *path, mode_t mode, dev_t dev){
+	printf("mknod called\n");
+
+
+	return 0;
+}
+int lfs_truncate(const char *path, off_t size, struct fuse_file_info *fi){
+/*	const void *msg = "testing\n";
+	printf("msg: %d\n",msg);
+	printf("msg: %s\n",msg);
+	printf("truncate: (path=%s)\n", path);
+	int count = write_disk(0, &msg, 0);
+	printf("truncate count %d\n",count);
+	if (count == -1){
+		return -errno;
+	} */
+	return 0;
+}
 
 int open_disk(){
 	disk = open(diskPath, O_RDWR);
@@ -60,34 +81,12 @@ int close_disk(){
 }
 
 /* read block and put in specified buffer, returns bytes read */
-int read_disk( int block, void *buff, int offset){
+int read_disk( int block, void *buff, int offset, size_t size){
 	int count;
 	off_t loffset;
-	open_disk();
-	if (disk == -1){
-		//printf("failed to read from disk, not open");
-		close_disk();
-		return -errno;
-	}
-	loffset = lseek(disk, block * BLOCK_SIZE + offset, SEEK_SET);
-	//printf("disk: %d, offset: %d,%d\n",disk,loffset,offset);
-	if (loffset == -1){
-		close_disk();
-		return -errno;
-	}
-	count = read(disk, buff, BLOCK_SIZE);
-	if (count == -1){
-		//printf("failed to read at %d + %d\n",loffset,offset);
-		close_disk();
-		return -errno;
-	}
-	close_disk();
-	return count;
-}
 
-int write_disk( int block, void *buff, int offset){
-	int count;
-	off_t loffset;
+	// add size validation. (less than blocksize, more than 0)
+	// SEE ABOVE COMMENT
 
 	if (offset >= BLOCK_SIZE){
 		return -EINVAL;
@@ -105,10 +104,43 @@ int write_disk( int block, void *buff, int offset){
 		close_disk();
 		return -errno;
 	}
-	// only allow writing within 1 block.
-	count = write(disk, buff, BLOCK_SIZE - offset);
+	count = read(disk, buff, size);
 	if (count == -1){
 		//printf("failed to read at %d + %d\n",loffset,offset);
+		close_disk();
+		return -errno;
+	}
+	close_disk();
+	return count;
+}
+
+int write_disk( int block, void *buff, int offset, size_t size){
+	int count;
+	off_t loffset;
+
+	// add size validation. (less than blocksize, more than 0)
+	// SEE ABOVE COMMENT
+
+	if (offset >= BLOCK_SIZE){
+		return -EINVAL;
+	}
+
+	open_disk();
+	if (disk == -1){
+		printf("failed to write to disk, not open");
+		close_disk();
+		return -errno;
+	}
+	loffset = lseek(disk, block * BLOCK_SIZE + offset, SEEK_SET);
+	printf("disk: %d, offset: %d,%d\n",disk,loffset,offset);
+	if (loffset == -1){
+		close_disk();
+		return -errno;
+	}
+	// only allow writing within 1 block.
+	count = write(disk, buff, size);
+	if (count == -1){
+		printf("failed to write at %d + %d\n",loffset,offset);
 		close_disk();
 		return -errno;
 	}
@@ -176,7 +208,7 @@ int lfs_open( const char *path, struct fuse_file_info *fi ) {
 /* needs impl */
 int lfs_read( const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi ) {
   printf("read: (path=%s)\n", path);
-	int count = read_disk(0,buf, offset);
+	int count = read_disk(0,buf, offset, size);
 	if (count == -1){
 		return -errno;
 	}
@@ -186,7 +218,7 @@ int lfs_read( const char *path, char *buf, size_t size, off_t offset, struct fus
 /* needs impl */
 int lfs_write( const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi ) {
   printf("read: (path=%s)\n", path);
-	int count = write_disk(0,buf, offset);
+	int count = write_disk(0,buf, offset, size);
 	if (count == -1){
 		return -errno;
 	}
