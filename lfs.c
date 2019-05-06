@@ -31,6 +31,21 @@ static struct fuse_operations lfs_oper = {
 	.utime = NULL
 };
 
+struct lfs_inode {
+	mode_t mode;
+	size_t size;
+	int uid;
+	char *filename;
+	time_t last_modified;
+	time_t created;
+	int *data[15];
+	int *dp;
+}lfs_inode;
+
+struct root_data {
+	char blocks[2500];
+}root_data;
+
 #define MAX_DIRECTORIES 5
 #define MAX_DIRECTORY_SIZE 24
 #define BLOCK_SIZE 4096
@@ -46,6 +61,8 @@ int lfs_mknod(const char *path, mode_t mode, dev_t dev){
 
 	return 0;
 }
+
+// seems to be needed for echo and nano
 int lfs_truncate(const char *path, off_t size, struct fuse_file_info *fi){
 /*	const void *msg = "testing\n";
 	printf("msg: %d\n",msg);
@@ -57,6 +74,27 @@ int lfs_truncate(const char *path, off_t size, struct fuse_file_info *fi){
 		return -errno;
 	} */
 	return 0;
+}
+
+int disk_init(){
+	struct lfs_inode *root_inode;
+	root_inode = malloc(sizeof(lfs_inode));
+	printf("size of inode: %d\n",sizeof(lfs_inode));
+	read_disk(0, root_inode, 0, sizeof(lfs_inode));
+	printf("inode uid: %d\n", root_inode->uid);
+	if(root_inode->uid != 1){
+		root_inode->mode = S_IFDIR | 0755;
+		root_inode->size = BLOCK_SIZE;
+		root_inode->uid = 1;
+		root_inode->filename = "/";
+		root_inode->last_modified = time(NULL);
+		root_inode->created = time(NULL);
+		root_inode->data[15] = malloc(sizeof(int)*15);
+		root_inode->dp = 0;
+		write_disk(0, root_inode, 0, BLOCK_SIZE);
+	}
+
+
 }
 
 int open_disk(){
@@ -257,6 +295,8 @@ int lfs_mkdir(const char *path, mode_t mode){
 
 
 int main( int argc, char *argv[] ) {
+	disk_init();
+
 	fuse_main( argc, argv, &lfs_oper );
 	return 0;
 }
