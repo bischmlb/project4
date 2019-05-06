@@ -185,6 +185,43 @@ int write_disk( int block, void *buff, int offset, size_t size){
 	close_disk();
 	return count;
 }
+
+int find_slash(const char *string, size_t offset){
+	int i;
+	for (i = offset; i < strlen(string); i++ ){
+		if (string[i] == '/'){
+			return i;
+		}
+	}
+	return -1;
+}
+
+lfs_inode path_to_inode(const char *path){
+	char delim[];
+	char *slicer;
+	int count, slash_index;
+
+	delim = "/";
+	slicer = strtok(path, delim);
+	struct lfs_inode new_inode;
+	if(path[0] != '/'){
+		perror("first char '/'");
+		return -EINVAL;
+	}
+	newInode = malloc(sizeof(lfs_inode));
+	count = read_disk(0,buf, offset, size);
+	if (count == -1){
+		return -errno;
+	}
+	while(slicer != NULL){
+		// read inode, compare each link in inode with previous found.
+		// when comparison is true, the new link has been found and slicer is updated to next dir.
+
+	}
+
+}
+
+
 int lfs_getattr( const char *path, struct stat *stbuf ) {
 	int res = 0;
 	printf("getattr: (path=%s)\n", path);
