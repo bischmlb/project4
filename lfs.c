@@ -147,18 +147,19 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 	(void) fi;
 	printf("readdir: (path=%s)\n", path);
 
-	if(strcmp(path, "/") != 0)
+	if(strcmp(path, "/") != 0){
 		return -ENOENT;
+	}
 
 	filler(buf, ".", NULL, 0);
 	filler(buf, "..", NULL, 0);
 	filler(buf, "hello", NULL, 0);
 	filler(buf, "testdirectory", NULL, 0);
-	for (int i = 0; i < MAX_DIRECTORIES; i++){
+/*	for (int i = 0; i < MAX_DIRECTORIES; i++){
 		filler(buf, dirs[i], NULL, 0);
 		printf("directories:%s \n", dirs[i]);
 	}
-
+*/
 	return 0;
 }
 
@@ -183,9 +184,9 @@ int lfs_read( const char *path, char *buf, size_t size, off_t offset, struct fus
 }
 
 /* needs impl */
-int lfs_read( const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi ) {
+int lfs_write( const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi ) {
   printf("read: (path=%s)\n", path);
-	int count = read_disk(0,buf, offset);
+	int count = write_disk(0,buf, offset);
 	if (count == -1){
 		return -errno;
 	}
