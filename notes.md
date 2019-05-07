@@ -12,9 +12,9 @@ Inode
  - 1 pointer to list of pointers containing the same
  - unique ID
  - filename (*char [32])
- 
+
 Standard Inode
- 
+
 | Data                   | Bytes     |
 |------------------------|-----------|
 | unique_id              | 32        |
@@ -25,7 +25,7 @@ Standard Inode
 | 15 direct datapointers | 15*32=480 |
 | data_array             | 32        |
 | data                   | 3408      |
- 
+
 Root Inode
 
 | Data                   | Bytes     |
@@ -39,8 +39,8 @@ Root Inode
 | data_array             | 32        |
 | block_bitmap           | 313       |
 | leftover_bytes         | 3095      |
- 
- 
+
+
 Disk / root Inode
  - root inode stored at 0
  - contains info about disk (available blocks)
@@ -50,5 +50,7 @@ Disk / root Inode
  - continguos space found via bitmap contained in root inode
 
 Implementation notes
- - Use fseek() to navigate the file when read / writing blocks
  - mode / access for inodes
+ - REMEMBER TO ADD SUPPORT FOR INDIRECT FILES / DIRS. (readdir, path_to_inode)
+ - Magic number in datapointers array in inode!
+ - path_to_inode should only work on directories (check mode bit)

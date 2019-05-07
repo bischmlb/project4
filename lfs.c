@@ -40,18 +40,14 @@ struct lfs_inode {
 	time_t created;
 	int *data[15];
 	int *dp;
-}lfs_inode;
+} lfs_inode;
 
 struct root_data {
 	char blocks[2500];
-}root_data;
+} root_data;
 
-#define MAX_DIRECTORIES 5
-#define MAX_DIRECTORY_SIZE 24
 #define BLOCK_SIZE 4096
 
-static char *dirs[MAX_DIRECTORIES][MAX_DIRECTORY_SIZE];
-static int mkdirID = 0;
 static int disk = -1;
 static char *diskPath = "disk";
 
@@ -196,29 +192,61 @@ int find_slash(const char *string, size_t offset){
 	return -1;
 }
 
-lfs_inode path_to_inode(const char *path){
-	char delim[];
+struct lfs_inode* path_to_inode(const char *path){
+	char delim[1];
 	char *slicer;
-	int count, slash_index;
+	int count, slash_index, i, found;
+	struct lfs_inode *cur_inode;
+	struct lfs_inode *new_inode;
 
-	delim = "/";
+	// verify that path is somewhat valid.
+	delim[0] = "/";
 	slicer = strtok(path, delim);
-	struct lfs_inode new_inode;
 	if(path[0] != '/'){
-		perror("first char '/'");
-		return -EINVAL;
+		perror("first char not '/'");
+		return NULL;
 	}
-	newInode = malloc(sizeof(lfs_inode));
-	count = read_disk(0,buf, offset, size);
+
+	// read root inode first.
+	cur_inode = malloc(sizeof(lfs_inode));
+	count = read_disk(0,cur_inode, 0, sizeof(lfs_inode));
 	if (count == -1){
-		return -errno;
+		perror("read failed in path_to_inode");
+		return NULL;
 	}
+
+	// malloc before iterating.
+	new_inode = malloc(sizeof(lfs_inode));
+
+	// /dm510/project4
+	// iterate over each directory name seperated by /
+	// REMEMBER TO ADD SUPPORT FOR INDIRECT FILES / DIRS.
 	while(slicer != NULL){
+		found = 0;
+		for (i=0; i<15 && found != 1; i++){
+			// if we reach an index with 0, that means the dir can't be found.
+			if (cur_inode->data[i] == 0){
+				return NULL;
+			}
+			// read referenced inode and check filename and mode (must be dir)
+			count = read_disk(cur_inode->data[i],new_inode, 0, sizeof(lfs_inode));
+			if (count == -1){
+				perror("read failed in path_to_inode loop");
+				return NULL;
+			}
+			if (strcmp(new_inode->filename,slicer) == 0){ // dir found.
+				memcpy(cur_inode, new_inode, sizeof(lfs_inode)); // set cur inode.
+				found = 1; // only stop this loop.
+			}
+		}
+		slicer = strtok(NULL, delim);
 		// read inode, compare each link in inode with previous found.
 		// when comparison is true, the new link has been found and slicer is updated to next dir.
 
+		//slicer = NULL;
 	}
-
+	free(new_inode);
+	return cur_inode;
 }
 
 
@@ -239,10 +267,6 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 		stbuf->st_mode = S_IFREG | 0777;
 		stbuf->st_nlink = 1;
 		stbuf->st_size = 12;
-	}else if( strcmp ( path, dirs[mkdirID] ) == 0) {
-		//printf("kdkdk: %s \n", dirs[mkdirID]);
-		stbuf->st_mode = S_IFDIR | 0755;
-		stbuf->st_nlink = 2;
 	}else{
 		res = -ENOENT;
 	}
@@ -252,6 +276,9 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi ) {
 	(void) offset;
 	(void) fi;
+	int count, i;
+	struct lfs_inode *cur_inode;
+	struct lfs_inode *read_inode;
 	printf("readdir: (path=%s)\n", path);
 
 	if(strcmp(path, "/") != 0){
@@ -260,13 +287,28 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 
 	filler(buf, ".", NULL, 0);
 	filler(buf, "..", NULL, 0);
-	filler(buf, "hello", NULL, 0);
-	filler(buf, "testdirectory", NULL, 0);
-/*	for (int i = 0; i < MAX_DIRECTORIES; i++){
-		filler(buf, dirs[i], NULL, 0);
-		printf("directories:%s \n", dirs[i]);
+
+	cur_inode = path_to_inode(path);
+	read_inode = malloc(sizeof(lfs_inode));
+	// REMEMBER TO ADD SUPPORT FOR INDIRECT FILES / DIRS.
+	for (i=0; i<15; i++){
+		if (cur_inode->data[i] == 0){
+			break;
+		}
+		// read referenced inode called filler() on filename.
+		count = read_disk(cur_inode->data[i],read_inode, 0, sizeof(lfs_inode));
+		if (count == -1){
+			perror("read failed in readdir loop");
+			return -ENOENT;
+		}
+		filler(buf,read_inode->filename, NULL, 0);
 	}
-*/
+	//filler(buf, "hello", NULL, 0);
+	//filler(buf, "testdirectory", NULL, 0);
+
+	free(read_inode);
+	free(cur_inode);
+
 	return 0;
 }
 
@@ -312,21 +354,7 @@ int lfs_release(const char *path, struct fuse_file_info *fi) {
 int lfs_mkdir(const char *path, mode_t mode){
 	int res;
 	printf("THIS: %s \n", path);
-	if(mkdirID == MAX_DIRECTORIES){
-		return -errno;
-	}
-	res = mkdir(path, mode);
-	strcpy(dirs[mkdirID], path);
-	mkdirID++;
-	//for (int i = 0; i < MAX_DIRECTORIES; i++){
-	//	printf("directories: %s \n", dirs[i]);
-//	}
-
-	if(res == -1){
-		return -errno;
-		}
-
-	return 0;
+	return -1; // not implemented.
 }
 
 
