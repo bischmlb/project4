@@ -320,10 +320,11 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 		return -ENOENT;
 	}
 	if (0==0){
-		stbuf->st_mode=inode->mode;
+		stbuf->st_mode=S_IFDIR | 0755;//inode->mode;
 		stbuf->st_nlink=2;
 		//stbuf->st_size=inode->size;
-		return res;
+		printf("found dir, returning 0\n");
+		return 0;
 	}
 
 	if( strcmp( path, "/" ) == 0 ) {
@@ -354,8 +355,9 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 		return -ENOENT;
 	}
 
-	//filler(buf, ".", NULL, 0);
-	//filler(buf, "..", NULL, 0);
+	filler(buf, ".", NULL, 0);
+	filler(buf, "..", NULL, 0);
+	
 	cur_inode = malloc(BLOCK_SIZE);
 	path_to_inode(path, cur_inode);
 
