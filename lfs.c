@@ -192,7 +192,7 @@ int find_slash(const char *string, size_t offset){
 	return -1;
 }
 
-struct lfs_inode* path_to_inode(const char *path){
+int path_to_inode(const char *path, void* buff){
 	char delim[1];
 	char *slicer;
 	int count, slash_index, i, found;
@@ -204,15 +204,15 @@ struct lfs_inode* path_to_inode(const char *path){
 	slicer = strtok(path, delim);
 	if(path[0] != '/'){
 		perror("first char not '/'");
-		return NULL;
+		return -1;
 	}
 
 	// read root inode first.
-	cur_inode = malloc(sizeof(lfs_inode));
+	cur_inode = buff;
 	count = read_disk(0,cur_inode, 0, sizeof(lfs_inode));
 	if (count == -1){
 		perror("read failed in path_to_inode");
-		return NULL;
+		return -1;
 	}
 
 	// malloc before iterating.
@@ -226,13 +226,13 @@ struct lfs_inode* path_to_inode(const char *path){
 		for (i=0; i<15 && found != 1; i++){
 			// if we reach an index with 0, that means the dir can't be found.
 			if (cur_inode->data[i] == 0){
-				return NULL;
+				return -1;
 			}
 			// read referenced inode and check filename and mode (must be dir)
 			count = read_disk(cur_inode->data[i],new_inode, 0, sizeof(lfs_inode));
 			if (count == -1){
 				perror("read failed in path_to_inode loop");
-				return NULL;
+				return -1;
 			}
 			if (strcmp(new_inode->filename,slicer) == 0){ // dir found.
 				memcpy(cur_inode, new_inode, sizeof(lfs_inode)); // set cur inode.
@@ -245,8 +245,10 @@ struct lfs_inode* path_to_inode(const char *path){
 
 		//slicer = NULL;
 	}
+//	printf("Found inode!: ");
+//	printf("%s found with address &d\n",cur_inode->filename,&cur_inode);
 	free(new_inode);
-	return cur_inode;
+	return 0;
 }
 
 
@@ -287,28 +289,43 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 
 	filler(buf, ".", NULL, 0);
 	filler(buf, "..", NULL, 0);
+	cur_inode = malloc(sizeof(lfs_inode));
+	path_to_inode(path, cur_inode);
+	printf("Reading contents of %d\n", &cur_inode);
+	printf("Filename coming: ");
+	printf("%s\n",cur_inode->filename);
 
-	cur_inode = path_to_inode(path);
+// no crash please
+	if (0 == 0){
+		return -1;
+	}
+
 	read_inode = malloc(sizeof(lfs_inode));
 	// REMEMBER TO ADD SUPPORT FOR INDIRECT FILES / DIRS.
+	printf("reached this\n");
 	for (i=0; i<15; i++){
+		printf("reached this loop index %d\n",i);
 		if (cur_inode->data[i] == 0){
 			break;
 		}
 		// read referenced inode called filler() on filename.
+		printf("gonna read\n");
 		count = read_disk(cur_inode->data[i],read_inode, 0, sizeof(lfs_inode));
 		if (count == -1){
 			perror("read failed in readdir loop");
 			return -ENOENT;
 		}
+		printf("read, gonna fill\n");
 		filler(buf,read_inode->filename, NULL, 0);
+		printf("filled\n");
 	}
 	//filler(buf, "hello", NULL, 0);
 	//filler(buf, "testdirectory", NULL, 0);
-
+	printf("free read\n");
 	free(read_inode);
+	printf("free cur\n");
 	free(cur_inode);
-
+	printf("we gucci\n");
 	return 0;
 }
 
