@@ -40,7 +40,7 @@ struct lfs_inode {
 	time_t created;
 	int *data_blocks[15];
 	int *dp;
-	char *extra_data[2500]; // used by root inode to track free blocks.
+	char *extra_data[313]; // used by root inode to track free blocks.
 } lfs_inode;
 
 /*
@@ -207,14 +207,12 @@ int path_to_inode(const char *path, void* buff){
 	// verify that path is somewhat valid.
 	delim[0] = "/";
 	slicer = strtok(path, delim);
-	printf("checkpoint 1");
 	if(path[0] != '/'){
 		perror("first char not '/'");
 		return -1;
 	}
 
 	// read root inode first.
-	printf("checkpoint 2");
 	cur_inode = buff;
 	count = read_disk(0,cur_inode, 0, sizeof(lfs_inode));
 	if (count == -1){
@@ -223,17 +221,14 @@ int path_to_inode(const char *path, void* buff){
 	}
 
 	// malloc before iterating.
-	printf("checkpoint 3");
 	new_inode = malloc(sizeof(lfs_inode));
 
 	// /dm510/project4
 	// iterate over each directory name seperated by /
 	// REMEMBER TO ADD SUPPORT FOR INDIRECT FILES / DIRS.
-	printf("checkpoint 4");
 	while(slicer != NULL){
 		found = 0;
 		for (i=0; i<15 && found != 1; i++){
-			printf("checkpoint 5, %d", i);
 			// if we reach an index with 0, that means the dir can't be found.
 			if (cur_inode->data_blocks[i] == 0){
 				return -1;
@@ -261,13 +256,60 @@ int path_to_inode(const char *path, void* buff){
 	return 0;
 }
 
+const char* path_to_folder(const char *path)
+{
+	char delim[] = "/";
+
+	char *ptr = strtok(path, delim);
+
+	// is there a better way than a double call to strtok?
+	while(ptr != NULL)
+	{
+		if (strtok(NULL, delim) == NULL){
+			return ptr;
+		}
+		ptr = strtok(NULL, delim);
+	}
+
+	return NULL;
+}
 
 int lfs_getattr( const char *path, struct stat *stbuf ) {
 	int res = 0;
+	struct lfs_inode *inode;
+	const char *filename;
 	printf("getattr: (path=%s)\n", path);
 
 	memset(stbuf, 0, sizeof(struct stat));
 
+	// no heavy lifting for root dir which also gives weird behavior.
+	if( strcmp( path, "/" ) == 0 ) {
+		stbuf->st_mode = S_IFDIR | 0755;
+		stbuf->st_nlink = 2;
+		return 0;
+	}
+
+	inode = malloc(sizeof(lfs_inode));
+	path_to_inode(path,inode);
+	// validate that the found inode is the one the path points to (does it exist?)
+	printf("getting intended filename\n");
+	filename = path_to_folder(path);
+	printf("comparing to found inode\n");
+	printf("comparing %s\n",filename);
+	printf("with %s\n",inode->filename);
+	if (filename != NULL && strcmp(filename,inode->filename) == 0){
+		//printf("found correct inode\n");
+		printf("Found inode for %s\n", inode->filename);
+	} else {
+		printf("no file at path, doesn't exist\n");
+		return -ENOENT;
+	}
+	if (0==0){
+		stbuf->st_mode=inode->mode;
+		stbuf->st_nlink=2;
+		//stbuf->st_size=inode->size;
+		return res;
+	}
 
 	if( strcmp( path, "/" ) == 0 ) {
 		stbuf->st_mode = S_IFDIR | 0755;
@@ -297,27 +339,18 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 		return -ENOENT;
 	}
 
-	filler(buf, ".", NULL, 0);
-	filler(buf, "..", NULL, 0);
+	//filler(buf, ".", NULL, 0);
+	//filler(buf, "..", NULL, 0);
 	cur_inode = malloc(sizeof(lfs_inode));
 	path_to_inode(path, cur_inode);
-	printf("Reading contents of %d\n", &cur_inode);
-	printf("Filename coming: ");
-	printf("%s\n",cur_inode->filename);
-
-
-
 
 	read_inode = malloc(sizeof(lfs_inode));
 	// REMEMBER TO ADD SUPPORT FOR INDIRECT FILES / DIRS.
-	printf("reached this\n");
 	for (i=0; i<15; i++){
-		printf("reached this loop index %d\n",i);
 		if (cur_inode->data_blocks[i] == 0){
 			break;
 		}
 		// read referenced inode called filler() on filename.
-		printf("gonna read\n");
 		count = read_disk(cur_inode->data_blocks[i],read_inode, 0, sizeof(lfs_inode));
 		if (count == -1){
 			perror("read failed in readdir loop");
@@ -325,15 +358,13 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 		}
 		printf("read, gonna fill\n");
 		filler(buf,read_inode->filename, NULL, 0);
+		filler(buf, "ayy", NULL, 0);
 		printf("filled\n");
 	}
 	//filler(buf, "hello", NULL, 0);
 	//filler(buf, "testdirectory", NULL, 0);
-	printf("free read\n");
 	free(read_inode);
-	printf("free cur\n");
 	free(cur_inode);
-	printf("we gucci\n");
 	return 0;
 }
 
@@ -376,24 +407,6 @@ int lfs_release(const char *path, struct fuse_file_info *fi) {
 	return 0;
 }
 
-const char* path_to_folder(const char *path)
-{
-	char delim[] = "/";
-
-	char *ptr = strtok(path, delim);
-
-	// is there a better way than a double call to strtok?
-	while(ptr != NULL)
-	{
-		if (strtok(NULL, delim) == NULL){
-			return ptr;
-		}
-		ptr = strtok(NULL, delim);
-	}
-
-	return NULL;
-}
-
 int get_inode_slot(struct lfs_inode *inode){
 	int i;
 	for (i=0; i<15; i++){
@@ -433,6 +446,7 @@ int claim_free_block(){
 }
 
 int lfs_mkdir(const char *path, mode_t mode){
+	printf("I got called\n");
 	struct lfs_inode *cur_inode;
 	struct lfs_inode *new_inode;
 	const char *filename;
