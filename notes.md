@@ -52,5 +52,5 @@ Disk / root Inode
 Implementation notes
  - mode / access for inodes
  - REMEMBER TO ADD SUPPORT FOR INDIRECT FILES / DIRS. (readdir, path_to_inode)
- - Magic number in datapointers array in inode!
+ - Magic number in datapointers array in inode! 15 and 2500
  - path_to_inode should only work on directories (check mode bit)
