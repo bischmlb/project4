@@ -39,7 +39,7 @@ struct lfs_inode {
 	time_t last_modified;
 	time_t created;
 	int *data_blocks[15];
-	int *dp;
+	int dp;
 	char *extra_data[313]; // used by root inode to track free blocks.
 } lfs_inode;
 
@@ -55,7 +55,8 @@ static int disk = -1;
 static char *diskPath = "disk";
 
 int write_inode(struct lfs_inode *inode, int block){
-	int count;
+	int count, total;
+
 	off_t loffset;
 
 	// add size validation. (less than blocksize, more than 0)
@@ -68,73 +69,91 @@ int write_inode(struct lfs_inode *inode, int block){
 		return -errno;
 	}
 	loffset = lseek(disk, block * BLOCK_SIZE, SEEK_SET);
-	printf("disk write: %d, block: %d, offset: %d\n",disk,block, loffset);
+	printf("disk write: %d, block: %d, offset: %ld\n",disk,block, loffset);
 	if (loffset == -1){
 		close_disk();
 		return -errno;
 	}
+	total = 0;
 	// only allow writing within 1 block.
 	count = write(disk, &(inode->mode), sizeof(inode->mode));
 	if (count == -1){
-		printf("failed to write at %d\n",loffset);
+		printf("failed to write at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
+	total+=count;
+
 	count = write(disk, &(inode->size), sizeof(inode->size));
 	if (count == -1){
-		printf("failed to write at %d\n",loffset);
+		printf("failed to write at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
+	total+=count;
+
 	count = write(disk, &(inode->uid), sizeof(inode->uid));
 	if (count == -1){
-		printf("failed to write at %d\n",loffset);
+		printf("failed to write at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
+	total+=count;
+
 	count = write(disk, inode->filename, sizeof(inode->filename));
 	if (count == -1){
-		printf("failed to write at %d\n",loffset);
+		printf("failed to write at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
+	total+=count;
+
 	count = write(disk, &(inode->last_modified), sizeof(inode->last_modified));
 	if (count == -1){
-		printf("failed to write at %d\n",loffset);
+		printf("failed to write at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
+	total+=count;
+
 	count = write(disk, &(inode->created), sizeof(inode->created));
 	if (count == -1){
-		printf("failed to write at %d\n",loffset);
+		printf("failed to write at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
+	total+=count;
+
 	count = write(disk, inode->data_blocks, sizeof(inode->data_blocks));
 	if (count == -1){
-		printf("failed to write at %d\n",loffset);
+		printf("failed to write at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
-	count = write(disk, inode->dp, sizeof(inode->dp));
+	total+=count;
+
+	count = write(disk, &(inode->dp), sizeof(inode->dp));
 	if (count == -1){
-		printf("failed to write at %d\n",loffset);
+		printf("failed to write at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
+	total+=count;
+
 	count = write(disk, inode->extra_data, sizeof(inode->extra_data));
 	if (count == -1){
-		printf("failed to write at %d\n",loffset);
+		printf("failed to write at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
+	total+=count;
 
 	close_disk();
-	return count;
+	return total;
 }
 
-int read_inode(struct lfs_inode inode, block){
-	int count;
+int read_inode(struct lfs_inode *inode, int block){
+	int count, total;
 	off_t loffset;
 
 	// add size validation. (less than blocksize, more than 0)
@@ -147,69 +166,89 @@ int read_inode(struct lfs_inode inode, block){
 		return -errno;
 	}
 	loffset = lseek(disk, block * BLOCK_SIZE, SEEK_SET);
-	printf("disk read: %d, block: %d, offset: %d\n",disk,block, loffset);
+	printf("disk read: %d, block: %d, offset: %ld\n",disk,block, loffset);
 	if (loffset == -1){
 		close_disk();
 		return -errno;
 	}
+	total = 0;
 	// only allow writing within 1 block.
 	count = read(disk, &(inode->mode), sizeof(inode->mode));
 	if (count == -1){
-		printf("failed to read at %d\n",loffset);
+		printf("failed to read at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
+	total+=count;
+
+
 	count = read(disk, &(inode->size), sizeof(inode->size));
 	if (count == -1){
-		printf("failed to read at %d\n",loffset);
+		printf("failed to read at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
+	total+=count;
+
 	count = read(disk, &(inode->uid), sizeof(inode->uid));
 	if (count == -1){
-		printf("failed to read at %d\n",loffset);
+		printf("failed to read at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
+	total+=count;
+
 	count = read(disk, inode->filename, sizeof(inode->filename));
 	if (count == -1){
-		printf("failed to read at %d\n",loffset);
+		printf("failed to read at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
+	total+=count;
+
 	count = read(disk, &(inode->last_modified), sizeof(inode->last_modified));
 	if (count == -1){
-		printf("failed to read at %d\n",loffset);
+		printf("failed to read at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
+	total+=count;
+
 	count = read(disk, &(inode->created), sizeof(inode->created));
 	if (count == -1){
-		printf("failed to read at %d\n",loffset);
+		printf("failed to read at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
+	total+=count;
+
 	count = read(disk, inode->data_blocks, sizeof(inode->data_blocks));
 	if (count == -1){
-		printf("failed to read at %d\n",loffset);
+		printf("failed to read at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
-	count = read(disk, inode->dp, sizeof(inode->dp));
+	total+=count;
+
+	count = read(disk, &(inode->dp), sizeof(inode->dp));
 	if (count == -1){
-		printf("failed to read at %d\n",loffset);
+		printf("failed to read at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
+	total+=count;
+
 	count = read(disk, inode->extra_data, sizeof(inode->extra_data));
 	if (count == -1){
-		printf("failed to read at %d\n",loffset);
+		printf("failed to read at %ld\n",loffset);
 		close_disk();
 		return -errno;
 	}
+	total+=count;
+
 
 	close_disk();
-	return count;
+	return total;
 }
 
 int lfs_mknod(const char *path, mode_t mode, dev_t dev){
@@ -235,24 +274,21 @@ int lfs_truncate(const char *path, off_t size, struct fuse_file_info *fi){
 
 int disk_init(){
 	struct lfs_inode *root_inode;
+	int count;
 	root_inode = malloc(BLOCK_SIZE);
 	printf("size of inode: %d\n",BLOCK_SIZE);
-	read_disk(0, root_inode, 0, BLOCK_SIZE);
+	read_inode(root_inode, 0);
 	printf("inode uid: %d\n", root_inode->uid);
 	if(root_inode->uid != 1){
 		root_inode->mode = S_IFDIR | 0755;
 		root_inode->size = BLOCK_SIZE;
 		root_inode->uid = 1;
-		memset(root_inode->filename,0,sizeof(char)*32);
-		root_inode->filename[0] = '/';
-		root_inode->filename[1] = '\0';
+		memcpy(root_inode->filename,"/",1);
 		root_inode->last_modified = time(NULL);
 		root_inode->created = time(NULL);
-		memset(root_inode->data_blocks,0,sizeof(int)*15);
-		//root_inode->dp = 0;
-		//root_inode->extra_data = {0};
 		root_inode->extra_data[0] = 1;
-		write_disk(0, root_inode, 0, BLOCK_SIZE);
+		count = write_inode(root_inode, 0);
+		printf("root initial count: %d\n",count);
 	}
 	free(root_inode);
 
@@ -374,7 +410,7 @@ int path_to_inode(const char *path, struct lfs_inode *cur_inode){
 	// if we're looking for root inode, return once root has been read.
 	//printf("are we looking for root?\n");
 	if (path[1] == '\0') {
-		read_disk(0,cur_inode, 0, BLOCK_SIZE);
+		read_inode(cur_inode, 0);
 		//printf("we were, returning\n");
 		return 0;
 	}
@@ -385,7 +421,7 @@ int path_to_inode(const char *path, struct lfs_inode *cur_inode){
 	//slicer = strtok(NULL, delim);
 
 	// read root inode first.
-	count = read_disk(0,cur_inode, 0, BLOCK_SIZE);
+	count = read_inode(cur_inode, 0);
 	if (count == -1){
 		perror("read failed in path_to_inode");
 		return -1;
@@ -409,7 +445,7 @@ int path_to_inode(const char *path, struct lfs_inode *cur_inode){
 			}
 			printf("About to read at block %d\n",cur_inode->data_blocks[i]);
 			// read referenced inode and check filename and mode (must be dir)
-			count = read_disk(cur_inode->data_blocks[i],new_inode, 0, BLOCK_SIZE);
+			count = read_inode(new_inode,cur_inode->data_blocks[i]);
 			if (count == -1){
 				printf("read failed in path_to_inode loop");
 				return -1;
@@ -515,7 +551,7 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 	(void) fi;
 	int count, i;
 	struct lfs_inode *cur_inode;
-	struct lfs_inode *read_inode;
+	struct lfs_inode *dir_inode;
 	printf("readdir: (path=%s)\n", path);
 
 	if(strcmp(path, "/") != 0){
@@ -528,26 +564,26 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 	cur_inode = malloc(BLOCK_SIZE);
 	path_to_inode(path, cur_inode);
 
-	read_inode = malloc(BLOCK_SIZE);
+	dir_inode = malloc(BLOCK_SIZE);
 	// REMEMBER TO ADD SUPPORT FOR INDIRECT FILES / DIRS.
 	for (i=0; i<15; i++){
 		if (cur_inode->data_blocks[i] == 0){
 			break;
 		}
 		// read referenced inode called filler() on filename.
-		count = read_disk(cur_inode->data_blocks[i],read_inode, 0, BLOCK_SIZE);
+		count = read_inode(dir_inode, cur_inode->data_blocks[i]);
 		if (count == -1){
 			perror("read failed in readdir loop");
 			return -ENOENT;
 		}
 		printf("read %d, from %s gonna fill\n", count, cur_inode->filename);
-		printf("filling with %s\n",read_inode->filename);
-		filler(buf,read_inode->filename, NULL, 0);
+		printf("filling with %s\n",dir_inode->filename);
+		filler(buf,dir_inode->filename, NULL, 0);
 		printf("filled\n");
 	}
 	//filler(buf, "hello", NULL, 0);
 	//filler(buf, "testdirectory", NULL, 0);
-	free(read_inode);
+	free(dir_inode);
 	free(cur_inode);
 	return 0;
 }
@@ -607,17 +643,20 @@ int claim_free_block(){
 	struct lfs_inode *root_inode;
 
 	root_inode = malloc(BLOCK_SIZE);
-	count = read_disk(0, root_inode, 0, BLOCK_SIZE);
+	count = read_inode(root_inode, 0);
 	if (count == -1){
 		return -1;
 	}
-
+	printf("Read root inode with name %s\n",root_inode->filename);
+	printf("sizeof %d\n",sizeof(root_inode->extra_data));
+	printf("sizeof %d, read %d\n",sizeof(root_inode),count);
+	printf("free block: %c %c %c %c\n",root_inode->extra_data[5],root_inode->extra_data[6],root_inode->extra_data[7]);
 	// first is taken by root, fix magic number
-	for (i=5; i<2500;i++){
+	for (i=0; i<2500;i++){
 		if (root_inode->extra_data[i] == 0){ // found free
 			// update inode, write to disk and return block.
-			root_inode->extra_data[i] = 1;
-			count = write_disk(0, root_inode, 0, BLOCK_SIZE); // update on disk.
+			root_inode->extra_data[i] = 'b';
+			count = write_inode(root_inode, 0); // update on disk.
 			if (count == -1){
 				return -1;
 			}
@@ -670,7 +709,7 @@ int lfs_mkdir(const char *path, mode_t mode){
 
 	// how do we know what block this is on?
 	cur_inode->data_blocks[slot] = block;
-	write_disk(cur_inode->uid - 1, cur_inode, 0, BLOCK_SIZE);
+	write_inode(cur_inode, cur_inode->uid - 1);
 	printf("Wrote to disk, node with name %s references block %d with name %s\n",cur_inode->filename,block,new_inode->filename);
 	// free inodes
 	free(cur_inode);
