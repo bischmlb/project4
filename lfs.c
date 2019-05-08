@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+int disk_init();
+int open_disk();
+int close_disk();
 int lfs_getattr( const char *, struct stat * );
 int lfs_readdir( const char *, void *, fuse_fill_dir_t, off_t, struct fuse_file_info * );
 int lfs_open( const char *, struct fuse_file_info * );
@@ -35,12 +38,12 @@ struct lfs_inode {
 	mode_t mode;
 	size_t size;
 	int uid;
-	char *filename[32];
+	char filename[32];
 	time_t last_modified;
 	time_t created;
-	int *data_blocks[15];
+	int data_blocks[15];
 	int dp;
-	char *extra_data[313]; // used by root inode to track free blocks.
+	char extra_data[313]; // used by root inode to track free blocks.
 } lfs_inode;
 
 /*
@@ -140,6 +143,7 @@ int write_inode(struct lfs_inode *inode, int block){
 	}
 	total+=count;
 
+	printf("writing extra data, block 1 set to %d sizeof is %ld\n",inode->extra_data[1],sizeof(inode->extra_data));
 	count = write(disk, inode->extra_data, sizeof(inode->extra_data));
 	if (count == -1){
 		printf("failed to write at %ld\n",loffset);
@@ -229,6 +233,7 @@ int read_inode(struct lfs_inode *inode, int block){
 		return -errno;
 	}
 	total+=count;
+	printf("read extra data, block 1 set to %d sizeof is %ld\n",inode->extra_data[1],sizeof(inode->extra_data));
 
 	count = read(disk, &(inode->dp), sizeof(inode->dp));
 	if (count == -1){
@@ -286,12 +291,12 @@ int disk_init(){
 		memcpy(root_inode->filename,"/",1);
 		root_inode->last_modified = time(NULL);
 		root_inode->created = time(NULL);
-		root_inode->extra_data[0] = 1;
+		memset(root_inode->extra_data,1,1);
 		count = write_inode(root_inode, 0);
 		printf("root initial count: %d\n",count);
 	}
 	free(root_inode);
-
+	return 0;
 }
 
 int open_disk(){
@@ -334,7 +339,7 @@ int read_disk( int block, void *buff, int offset, size_t size){
 		return -errno;
 	}
 	loffset = lseek(disk, (block * BLOCK_SIZE) + offset, SEEK_SET);
-	printf("disk read: %d, block: %d, offset: %d,%d\n",disk,block, loffset,offset);
+	printf("disk read: %d, block: %d, offset: %ld,%d\n",disk,block, loffset,offset);
 	if (loffset == -1){
 		close_disk();
 		return -errno;
@@ -342,7 +347,7 @@ int read_disk( int block, void *buff, int offset, size_t size){
 	memset(buff,0,size); // clean area first.
 	count = read(disk, buff, size);
 	if (count == -1){
-		printf("failed to read at %d + %d\n",loffset,offset);
+		printf("failed to read at %ld + %d\n",loffset,offset);
 		close_disk();
 		return -errno;
 	}
@@ -369,7 +374,7 @@ int write_disk( int block, void *buff, int offset, size_t size){
 		return -errno;
 	}
 	loffset = lseek(disk, (block * BLOCK_SIZE) + offset, SEEK_SET);
-	printf("disk write: %d, block: %d, offset: %d,%d\n",disk,block, loffset,offset);
+	printf("disk write: %d, block: %d, offset: %ld,%d\n",disk,block, loffset,offset);
 	if (loffset == -1){
 		close_disk();
 		return -errno;
@@ -377,7 +382,7 @@ int write_disk( int block, void *buff, int offset, size_t size){
 	// only allow writing within 1 block.
 	count = write(disk, buff, size);
 	if (count == -1){
-		printf("failed to write at %d + %d\n",loffset,offset);
+		printf("failed to write at %ld + %d\n",loffset,offset);
 		close_disk();
 		return -errno;
 	}
@@ -398,7 +403,7 @@ int find_slash(const char *string, size_t offset){
 int path_to_inode(const char *path, struct lfs_inode *cur_inode){
 	char delim[1];
 	char *slicer;
-	int count, slash_index, i, found;
+	int count, i, found;
 	struct lfs_inode *new_inode;
 
 	// verify that path is somewhat valid.
@@ -416,7 +421,7 @@ int path_to_inode(const char *path, struct lfs_inode *cur_inode){
 	}
 	//printf("nahh\n");
 
-	delim[0] = "/";
+	delim[0] = '/';
 	slicer = strtok(path, delim);
 	//slicer = strtok(NULL, delim);
 
@@ -452,8 +457,8 @@ int path_to_inode(const char *path, struct lfs_inode *cur_inode){
 			}
 			printf("reading node with UID %d\n",new_inode->uid);
 			printf("Read %d bytes from %s node found in %s\n",count,new_inode->filename, cur_inode->filename);
-			printf("is that equal to %s?\n",slicer+1); // no root /
-			if (strcmp(new_inode->filename,slicer+1) == 0){ // dir found.
+			printf("is that equal to %s?\n",slicer); // no root /
+			if (strcmp(new_inode->filename,slicer) == 0){ // dir found.
 				printf("yep, they're equal\n");
 				memcpy(cur_inode, new_inode, BLOCK_SIZE); // set cur inode.
 				found = 1; // only stop this loop.
@@ -590,7 +595,6 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 
 //Permission
 int lfs_open( const char *path, struct fuse_file_info *fi ) {
-	int res;
 
   printf("open: (path=%s)\n", path);
 	if (0 == 0){
@@ -641,21 +645,23 @@ int get_inode_slot(struct lfs_inode *inode){
 int claim_free_block(){
 	int count, i;
 	struct lfs_inode *root_inode;
-
+	char taken = 1;
 	root_inode = malloc(BLOCK_SIZE);
 	count = read_inode(root_inode, 0);
 	if (count == -1){
 		return -1;
 	}
 	printf("Read root inode with name %s\n",root_inode->filename);
-	printf("sizeof %d\n",sizeof(root_inode->extra_data));
-	printf("sizeof %d, read %d\n",sizeof(root_inode),count);
-	printf("free block: %c %c %c %c\n",root_inode->extra_data[5],root_inode->extra_data[6],root_inode->extra_data[7]);
+	printf("sizeof %ld\n",sizeof(root_inode->extra_data));
+	printf("sizeof %ld, read %d\n",sizeof(root_inode),count);
+	printf("block 1 before claim: %d\n",root_inode->extra_data[1]);
 	// first is taken by root, fix magic number
 	for (i=0; i<2500;i++){
 		if (root_inode->extra_data[i] == 0){ // found free
 			// update inode, write to disk and return block.
-			root_inode->extra_data[i] = 'b';
+			memcpy(root_inode->extra_data + i,&taken,1);
+			printf("block 1 after claim: %d\n",root_inode->extra_data[1]);
+
 			count = write_inode(root_inode, 0); // update on disk.
 			if (count == -1){
 				return -1;
@@ -673,7 +679,7 @@ int lfs_mkdir(const char *path, mode_t mode){
 	struct lfs_inode *cur_inode;
 	struct lfs_inode *new_inode;
 	const char *filename;
-	int res, slot, block;
+	int slot, block;
 	cur_inode = malloc(BLOCK_SIZE);
 	path_to_inode(path, cur_inode);
 	filename = path_to_folder(path);
@@ -703,7 +709,6 @@ int lfs_mkdir(const char *path, mode_t mode){
 	new_inode->last_modified = time(NULL);
 	new_inode->created = time(NULL);
 	printf("writing new inode to disk at block %d\n",block);
-	printf("writing s %s and d %d\n",new_inode->filename,&new_inode->filename);
 	//write_disk(block, new_inode, 0, BLOCK_SIZE);
 	write_inode(new_inode,block);
 
