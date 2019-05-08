@@ -54,6 +54,89 @@ struct root_data {
 static int disk = -1;
 static char *diskPath = "disk";
 
+int write_inode(lfs_inode inode, int block){
+	int count;
+	off_t loffset;
+
+	// add size validation. (less than blocksize, more than 0)
+	// SEE ABOVE COMMENT
+
+	if (offset >= BLOCK_SIZE){
+		return -EINVAL;
+	}
+
+	open_disk();
+	if (disk == -1){
+		printf("failed to write to disk, not open");
+		close_disk();
+		return -errno;
+	}
+	loffset = lseek(disk, (block * BLOCK_SIZE) + offset, SEEK_SET);
+	printf("disk write: %d, block: %d, offset: %d,%d\n",disk,block, loffset,offset);
+	if (loffset == -1){
+		close_disk();
+		return -errno;
+	}
+	// only allow writing within 1 block.
+	count = write(disk, &(inode->mode), sizeof(inode->mode));
+	if (count == -1){
+		printf("failed to write at %d + %d\n",loffset,offset);
+		close_disk();
+		return -errno;
+	}
+	count = write(disk, &(inode->size), sizeof(inode->size));
+	if (count == -1){
+		printf("failed to write at %d + %d\n",loffset,offset);
+		close_disk();
+		return -errno;
+	}
+	count = write(disk, &(inode->uid), sizeof(inode->uid));
+	if (count == -1){
+		printf("failed to write at %d + %d\n",loffset,offset);
+		close_disk();
+		return -errno;
+	}
+	count = write(disk, inode->filename, sizeof(inode->filename));
+	if (count == -1){
+		printf("failed to write at %d + %d\n",loffset,offset);
+		close_disk();
+		return -errno;
+	}
+	count = write(disk, &(inode->last_modified), sizeof(inode->last_modified));
+	if (count == -1){
+		printf("failed to write at %d + %d\n",loffset,offset);
+		close_disk();
+		return -errno;
+	}
+	count = write(disk, &(inode->created), sizeof(inode->created));
+	if (count == -1){
+		printf("failed to write at %d + %d\n",loffset,offset);
+		close_disk();
+		return -errno;
+	}
+	count = write(disk, inode->data_blocks, sizeof(inode->data_blocks));
+	if (count == -1){
+		printf("failed to write at %d + %d\n",loffset,offset);
+		close_disk();
+		return -errno;
+	}
+	count = write(disk, inode->dp, sizeof(inode->dp));
+	if (count == -1){
+		printf("failed to write at %d + %d\n",loffset,offset);
+		close_disk();
+		return -errno;
+	}
+	count = write(disk, inode->extra_data, sizeof(inode->extra_data));
+	if (count == -1){
+		printf("failed to write at %d + %d\n",loffset,offset);
+		close_disk();
+		return -errno;
+	}
+
+	close_disk();
+	return count;
+}
+
 int lfs_mknod(const char *path, mode_t mode, dev_t dev){
 	printf("mknod called\n");
 
@@ -155,6 +238,7 @@ int read_disk( int block, void *buff, int offset, size_t size){
 	close_disk();
 	return count;
 }
+
 
 int write_disk( int block, void *buff, int offset, size_t size){
 	int count;
