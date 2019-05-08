@@ -133,6 +133,85 @@ int write_inode(struct lfs_inode *inode, int block){
 	return count;
 }
 
+int read_inode(struct lfs_inode inode, block){
+	int count;
+	off_t loffset;
+
+	// add size validation. (less than blocksize, more than 0)
+	// SEE ABOVE COMMENT
+
+	open_disk();
+	if (disk == -1){
+		printf("failed to read to disk, not open");
+		close_disk();
+		return -errno;
+	}
+	loffset = lseek(disk, block * BLOCK_SIZE, SEEK_SET);
+	printf("disk read: %d, block: %d, offset: %d\n",disk,block, loffset);
+	if (loffset == -1){
+		close_disk();
+		return -errno;
+	}
+	// only allow writing within 1 block.
+	count = read(disk, &(inode->mode), sizeof(inode->mode));
+	if (count == -1){
+		printf("failed to read at %d\n",loffset);
+		close_disk();
+		return -errno;
+	}
+	count = read(disk, &(inode->size), sizeof(inode->size));
+	if (count == -1){
+		printf("failed to read at %d\n",loffset);
+		close_disk();
+		return -errno;
+	}
+	count = read(disk, &(inode->uid), sizeof(inode->uid));
+	if (count == -1){
+		printf("failed to read at %d\n",loffset);
+		close_disk();
+		return -errno;
+	}
+	count = read(disk, inode->filename, sizeof(inode->filename));
+	if (count == -1){
+		printf("failed to read at %d\n",loffset);
+		close_disk();
+		return -errno;
+	}
+	count = read(disk, &(inode->last_modified), sizeof(inode->last_modified));
+	if (count == -1){
+		printf("failed to read at %d\n",loffset);
+		close_disk();
+		return -errno;
+	}
+	count = read(disk, &(inode->created), sizeof(inode->created));
+	if (count == -1){
+		printf("failed to read at %d\n",loffset);
+		close_disk();
+		return -errno;
+	}
+	count = read(disk, inode->data_blocks, sizeof(inode->data_blocks));
+	if (count == -1){
+		printf("failed to read at %d\n",loffset);
+		close_disk();
+		return -errno;
+	}
+	count = read(disk, inode->dp, sizeof(inode->dp));
+	if (count == -1){
+		printf("failed to read at %d\n",loffset);
+		close_disk();
+		return -errno;
+	}
+	count = read(disk, inode->extra_data, sizeof(inode->extra_data));
+	if (count == -1){
+		printf("failed to read at %d\n",loffset);
+		close_disk();
+		return -errno;
+	}
+
+	close_disk();
+	return count;
+}
+
 int lfs_mknod(const char *path, mode_t mode, dev_t dev){
 	printf("mknod called\n");
 
