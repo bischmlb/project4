@@ -52,5 +52,6 @@ Disk / root Inode
 Implementation notes
  - mode / access for inodes
  - REMEMBER TO ADD SUPPORT FOR INDIRECT FILES / DIRS. (readdir, path_to_inode)
- - Magic number in datapointers array in inode! 15 and 2500
+ - Magic number in datapointers array in inode! 15 and 2500, 32 dir len
  - path_to_inode should only work on directories (check mode bit)
+ - write_disk is writing pointers at struct rather than values.

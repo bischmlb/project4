@@ -35,7 +35,7 @@ struct lfs_inode {
 	mode_t mode;
 	size_t size;
 	int uid;
-	char *filename;
+	char *filename[32];
 	time_t last_modified;
 	time_t created;
 	int *data_blocks[15];
@@ -85,10 +85,12 @@ int disk_init(){
 		root_inode->mode = S_IFDIR | 0755;
 		root_inode->size = BLOCK_SIZE;
 		root_inode->uid = 1;
-		root_inode->filename = "/";
+		memset(root_inode->filename,0,sizeof(char)*32);
+		root_inode->filename[0] = '/';
+		root_inode->filename[1] = '\0';
 		root_inode->last_modified = time(NULL);
 		root_inode->created = time(NULL);
-		//root_inode->data_blocks[] = 0;
+		memset(root_inode->data_blocks,0,sizeof(int)*15);
 		//root_inode->dp = 0;
 		//root_inode->extra_data = {0};
 		root_inode->extra_data[0] = 1;
@@ -104,7 +106,7 @@ int open_disk(){
 		printf("failed to open disk\n");
 		return -errno;
 	}
-	printf("disk opened\n");
+	//printf("disk opened\n");
 	return 0;
 }
 
@@ -115,7 +117,7 @@ int close_disk(){
 		printf("failed to close disk\n");
 		return -errno;
 	}
-	printf("disk closed\n");
+	//printf("disk closed\n");
 	return 0;
 }
 
@@ -137,15 +139,16 @@ int read_disk( int block, void *buff, int offset, size_t size){
 		close_disk();
 		return -errno;
 	}
-	loffset = lseek(disk, block * BLOCK_SIZE + offset, SEEK_SET);
-	//printf("disk: %d, offset: %d,%d\n",disk,loffset,offset);
+	loffset = lseek(disk, (block * BLOCK_SIZE) + offset, SEEK_SET);
+	printf("disk read: %d, block: %d, offset: %d,%d\n",disk,block, loffset,offset);
 	if (loffset == -1){
 		close_disk();
 		return -errno;
 	}
+	memset(buff,0,size); // clean area first.
 	count = read(disk, buff, size);
 	if (count == -1){
-		//printf("failed to read at %d + %d\n",loffset,offset);
+		printf("failed to read at %d + %d\n",loffset,offset);
 		close_disk();
 		return -errno;
 	}
@@ -170,8 +173,8 @@ int write_disk( int block, void *buff, int offset, size_t size){
 		close_disk();
 		return -errno;
 	}
-	loffset = lseek(disk, block * BLOCK_SIZE + offset, SEEK_SET);
-	printf("disk: %d, offset: %d,%d\n",disk,loffset,offset);
+	loffset = lseek(disk, (block * BLOCK_SIZE) + offset, SEEK_SET);
+	printf("disk write: %d, block: %d, offset: %d,%d\n",disk,block, loffset,offset);
 	if (loffset == -1){
 		close_disk();
 		return -errno;
@@ -210,13 +213,13 @@ int path_to_inode(const char *path, struct lfs_inode *cur_inode){
 	}
 
 	// if we're looking for root inode, return once root has been read.
-	printf("are we looking for root?\n");
+	//printf("are we looking for root?\n");
 	if (path[1] == '\0') {
 		read_disk(0,cur_inode, 0, BLOCK_SIZE);
-		printf("we were, returning\n");
+		//printf("we were, returning\n");
 		return 0;
 	}
-	printf("nahh\n");
+	//printf("nahh\n");
 
 	delim[0] = "/";
 	slicer = strtok(path, delim);
@@ -228,29 +231,32 @@ int path_to_inode(const char *path, struct lfs_inode *cur_inode){
 		perror("read failed in path_to_inode");
 		return -1;
 	}
-	printf("checkpoint\n");
+
 	// malloc before iterating.
 	new_inode = malloc(BLOCK_SIZE);
-	printf("malloc pls\n");
+	memset(new_inode,0,BLOCK_SIZE); // clean memory block so only disk info is kept.
+
 	// /dm510/project4
 	// iterate over each directory name seperated by /
 	// REMEMBER TO ADD SUPPORT FOR INDIRECT FILES / DIRS.
 	while(slicer != NULL){
 		found = 0;
 		for (i=0; i<15 && found != 1; i++){
-			printf("about to check a block %d\n",i);
+			printf("about to check a data_blocks index %d\n",i);
 			// if we reach an index with 0, that means the dir can't be found.
 			if (cur_inode->data_blocks[i] == 0){
 				printf("no blocks found at %s i=%d\n", cur_inode->filename,i);
-				return -1;
+				return -1; // we weren't able to reach path.
 			}
+			printf("About to read at block %d\n",cur_inode->data_blocks[i]);
 			// read referenced inode and check filename and mode (must be dir)
 			count = read_disk(cur_inode->data_blocks[i],new_inode, 0, BLOCK_SIZE);
 			if (count == -1){
 				printf("read failed in path_to_inode loop");
 				return -1;
 			}
-			printf("just read %s node\n",new_inode->filename);
+			printf("reading node with UID %d\n",new_inode->uid);
+			printf("Read %d bytes from %s node found in %s\n",count,new_inode->filename, cur_inode->filename);
 			printf("is that equal to %s?\n",slicer+1); // no root /
 			if (strcmp(new_inode->filename,slicer+1) == 0){ // dir found.
 				printf("yep, they're equal\n");
@@ -297,7 +303,9 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 	memset(stbuf, 0, sizeof(struct stat));
 
 	// no heavy lifting for root dir which also gives weird behavior.
-	if( strcmp( path, "/" ) == 0 ) {
+	if( strcmp( path, "/" ) == 0 ||
+		strcmp( path, "." ) == 0 ||
+		strcmp( path, ".." ) == 0 ){
 		stbuf->st_mode = S_IFDIR | 0755;
 		stbuf->st_nlink = 2;
 		return 0;
@@ -310,8 +318,8 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 	printf("getting intended filename\n");
 	filename = path_to_folder(path);
 	printf("comparing to found inode\n");
-	printf("comparing %s\n",filename);
-	printf("with %s\n",inode->filename);
+	printf("comparing path to %s\n",filename);
+	printf("with inode found %s\n",inode->filename);
 	if (filename != NULL && strcmp(filename,inode->filename) == 0){
 		//printf("found correct inode\n");
 		printf("found inode for %s\n", inode->filename);
@@ -357,7 +365,7 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 
 	filler(buf, ".", NULL, 0);
 	filler(buf, "..", NULL, 0);
-	
+
 	cur_inode = malloc(BLOCK_SIZE);
 	path_to_inode(path, cur_inode);
 
@@ -373,10 +381,9 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 			perror("read failed in readdir loop");
 			return -ENOENT;
 		}
-		printf("read %d, gonna fill\n", count);
+		printf("read %d, from %s gonna fill\n", count, cur_inode->filename);
 		printf("filling with %s\n",read_inode->filename);
 		filler(buf,read_inode->filename, NULL, 0);
-		filler(buf, "ayy", NULL, 0);
 		printf("filled\n");
 	}
 	//filler(buf, "hello", NULL, 0);
@@ -447,7 +454,7 @@ int claim_free_block(){
 	}
 
 	// first is taken by root, fix magic number
-	for (i=1; i<2500;i++){
+	for (i=5; i<2500;i++){
 		if (root_inode->extra_data[i] == 0){ // found free
 			// update inode, write to disk and return block.
 			root_inode->extra_data[i] = 1;
@@ -456,7 +463,7 @@ int claim_free_block(){
 				return -1;
 			}
 			free(root_inode);
-			printf("Updated root. Block %d, wrote %d bytes\n",i,count);
+			printf("Updated root. Block %d taken, wrote %d bytes\n",i,count);
 			return i;
 		}
 	}
@@ -473,7 +480,7 @@ int lfs_mkdir(const char *path, mode_t mode){
 	path_to_inode(path, cur_inode);
 	filename = path_to_folder(path);
 	printf("creating in directory: %s\n", cur_inode->filename);
-	printf("name of new dir: %s\n",path_to_folder(path));
+	printf("name of new dir: %s\n",filename);
 
 	// find slot for new inode in data_blocks[15]
 	// choose free block (how do we find this?)
@@ -493,10 +500,12 @@ int lfs_mkdir(const char *path, mode_t mode){
 	new_inode->mode = mode;
 	new_inode->size = BLOCK_SIZE;
 	new_inode->uid = block + 1; // root inode at block 0 is #1
-	new_inode->filename = filename;
+	memset(new_inode->filename,0,sizeof(char)*32);
+	memcpy(new_inode->filename,filename,32); // magic number
 	new_inode->last_modified = time(NULL);
 	new_inode->created = time(NULL);
 	printf("writing new inode to disk at block %d\n",block);
+	printf("writing s %s and d %d\n",new_inode->filename,&new_inode->filename);
 	write_disk(block, new_inode, 0, BLOCK_SIZE);
 
 	// how do we know what block this is on?
