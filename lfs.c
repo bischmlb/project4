@@ -143,7 +143,7 @@ int write_inode(struct lfs_inode *inode, int block){
 	}
 	total+=count;
 
-	printf("writing extra data, extra_data[1]=%d sizeof is %ld\n",inode->extra_data[1],sizeof(inode->extra_data));
+	//printf("writing extra data, extra_data[1]=%d sizeof is %ld\n",inode->extra_data[1],sizeof(inode->extra_data));
 	count = write(disk, inode->extra_data, sizeof(inode->extra_data));
 	if (count == -1){
 		printf("failed to write at %ld\n",loffset);
@@ -233,7 +233,7 @@ int read_inode(struct lfs_inode *inode, int block){
 		return -errno;
 	}
 	total+=count;
-	printf("read extra data, extra_data[1]=%d sizeof is %ld\n",inode->extra_data[1],sizeof(inode->extra_data));
+	//printf("read extra data, extra_data[1]=%d sizeof is %ld\n",inode->extra_data[1],sizeof(inode->extra_data));
 
 	count = read(disk, &(inode->dp), sizeof(inode->dp));
 	if (count == -1){
@@ -478,12 +478,12 @@ int path_to_inode(const char *path, struct lfs_inode *cur_inode){
 }
 
 const char* path_to_folder(const char *path){
-	int last_slash, i;
+	int last_slash;
 	char *folder;
 
 	last_slash = find_slash(path, 0);
 	folder = malloc(strlen(path));
-	memcpy(folder,path+last_slash+1,strlen(path)-last_slash);
+	memcpy(folder,path+last_slash+1,strlen(path)-last_slash-1);
 
 	printf("Folder name: %s\n", folder);
 	return folder;
@@ -493,6 +493,7 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 	int res = 0;
 	struct lfs_inode *inode;
 	const char *filename;
+	char *filepath;
 	printf("getattr: (path=%s)\n", path);
 
 	memset(stbuf, 0, sizeof(struct stat));
@@ -507,14 +508,21 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 	}
 
 	inode = malloc(BLOCK_SIZE);
-	res = path_to_inode(path,inode);
+	filepath = malloc(strlen(path)); // don't want to change const.
+	memcpy(filepath,path,strlen(path));
+	res = path_to_inode(filepath,inode);
 	printf("getattr path_to_inode res=%d\n",res);
 	if (res == -1){
+		free(filepath);
 		return -ENOENT;
 	}
 	// validate that the found inode is the one the path points to (does it exist?)
+
 	printf("getting intended filename\n");
-	filename = path_to_folder(path);
+	free(filepath);
+	filepath = malloc(strlen(path));
+	memcpy(filepath,path,strlen(path));
+	filename = path_to_folder(filepath);
 	printf("comparing to found inode\n");
 	printf("comparing path to %s\n",filename);
 	printf("with inode found %s\n",inode->filename);
@@ -523,6 +531,7 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 		printf("found inode for %s\n", inode->filename);
 	} else {
 		printf("no file at path, doesn't exist\n");
+		free(filepath);
 		return -ENOENT;
 	}
 	if (0==0){
@@ -530,6 +539,7 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 		stbuf->st_nlink=2;
 		//stbuf->st_size=inode->size;
 		printf("found dir, returning 0\n");
+		free(filepath);
 		return 0;
 	}
 
@@ -649,16 +659,16 @@ int claim_free_block(){
 	if (count == -1){
 		return -1;
 	}
-	printf("Read root inode with name %s\n",root_inode->filename);
-	printf("sizeof %ld\n",sizeof(root_inode->extra_data));
-	printf("sizeof %ld, read %d\n",sizeof(root_inode),count);
-	printf("block 1 before claim: %d\n",root_inode->extra_data[1]);
+	//printf("Read root inode with name %s\n",root_inode->filename);
+	//printf("sizeof %ld\n",sizeof(root_inode->extra_data));
+	//printf("sizeof %ld, read %d\n",sizeof(root_inode),count);
+	//printf("block 1 before claim: %d\n",root_inode->extra_data[1]);
 	// first is taken by root, fix magic number
 	for (i=0; i<2500;i++){
 		if (root_inode->extra_data[i] == 0){ // found free
 			// update inode, write to disk and return block.
 			memcpy(root_inode->extra_data + i,&taken,1);
-			printf("block 1 after claim: %d\n",root_inode->extra_data[1]);
+			//printf("block 1 after claim: %d\n",root_inode->extra_data[1]);
 
 			count = write_inode(root_inode, 0); // update on disk.
 			if (count == -1){
@@ -674,17 +684,19 @@ int claim_free_block(){
 
 int lfs_mkdir(const char *path, mode_t mode){
 	printf("mkdir path: %s\n", path);
-	printf("!!!MKDIR: sizeof path: %ld\n", sizeof(path));
+	printf("!!!MKDIR: sizeof path: %ld,%ld\n", sizeof(path),strlen(path));
 	struct lfs_inode *cur_inode;
 	struct lfs_inode *new_inode;
 	const char *filename;
 	char *filepath;
-	int slot, block;
+	int slot, block, cur_block, res;
+	res = 0;
 	cur_inode = malloc(BLOCK_SIZE);
-	filepath = malloc(sizeof(path)); // don't want to change const.
-	memcpy(filepath,path,sizeof(path));
+	filepath = malloc(strlen(path)); // don't want to change const.
+	memcpy(filepath,path,strlen(path));
 	path_to_inode(filepath, cur_inode);
-	memcpy(filepath,path,sizeof(path));
+	cur_block = cur_inode->uid - 1;
+	memcpy(filepath,path,strlen(path));
 	filename = path_to_folder(filepath);
 
 	printf("creating in directory: %s\n", cur_inode->filename);
@@ -696,14 +708,20 @@ int lfs_mkdir(const char *path, mode_t mode){
 	// update list of free blocks.
 	slot = get_inode_slot(cur_inode);
 	if (slot == -1){
-		return -1;
+		res = -1;
 	}
 	block = claim_free_block();
 	if (block == -1){
-		return -1;
+		res = -1;
+	}
+	if (res == -1){
+		free(cur_inode);
+		free(filepath);
+		printf("Once of these failed: block: %d, slot: %d\n",block,slot);
+		return res;
 	}
 	// update cur_inode after having claimed a block in root.
-	read_inode(cur_inode,0);
+	read_inode(cur_inode,cur_block);
 	printf("using slot %d and block %d\n", slot, block);
 
 	new_inode = malloc(BLOCK_SIZE);
@@ -725,6 +743,7 @@ int lfs_mkdir(const char *path, mode_t mode){
 	// free inodes
 	free(cur_inode);
 	free(new_inode);
+	free(filepath);
 
 	return 0; // not implemented.
 }
