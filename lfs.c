@@ -481,23 +481,24 @@ const char* path_to_folder(const char *path)
 	char delim[] = "/";
 	printf("getting deepest dir in %s\n",path);
 	char *ptr = strtok(path, delim);
+	char *folder = malloc(sizeof(path));
 	// is there a better way than a double call to strtok?
 	while(ptr != NULL)
 	{
-		printf("path_to_folder %s\n",ptr);
-		if (strtok(NULL, delim) == NULL){
-			return ptr;
-		}
+		printf("cur val %s\n",folder);
+		memcpy(folder,ptr,sizeof(path));
+		printf("cur val %s\n",folder);
 		ptr = strtok(NULL, delim);
 	}
 
-	return NULL;
+	return folder;
 }
 
 int lfs_getattr( const char *path, struct stat *stbuf ) {
 	int res = 0;
 	struct lfs_inode *inode;
 	const char *filename;
+	const char *filepath;
 	printf("getattr: (path=%s)\n", path);
 
 	memset(stbuf, 0, sizeof(struct stat));
@@ -512,14 +513,17 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 	}
 
 	inode = malloc(BLOCK_SIZE);
-	res = path_to_inode(path,inode);
+	filepath = malloc(sizeof(path));
+	memcpy(filepath,path,sizeof(path));
+	res = path_to_inode(filepath,inode);
 	printf("getattr path_to_inode res=%d\n",res);
 	if (res == -1){
 		return -ENOENT;
 	}
 	// validate that the found inode is the one the path points to (does it exist?)
 	printf("getting intended filename\n");
-	filename = path_to_folder(path);
+	memcpy(filepath,path,sizeof(path));
+	filename = path_to_folder(filepath);
 	printf("comparing to found inode\n");
 	printf("comparing path to %s\n",filename);
 	printf("with inode found %s\n",inode->filename);
@@ -706,7 +710,7 @@ int lfs_mkdir(const char *path, mode_t mode){
 		return -1;
 	}
 	// update cur_inode after having claimed a block in root.
-	read_inode(cur_inode,0);
+	read_inode(cur_inode,cur_inode->uid-1);
 	printf("using slot %d and block %d\n", slot, block);
 
 	new_inode = malloc(BLOCK_SIZE);

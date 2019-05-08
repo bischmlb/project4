@@ -58,3 +58,4 @@ Implementation notes
  - freeblock doesn't work
  - overwritten data isn't completely overwritten (if previous was larger.)
  - data is overwritten after claim_free_block()
+ - root is always dir because root is loaded after each time.
