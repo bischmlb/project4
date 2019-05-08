@@ -57,3 +57,4 @@ Implementation notes
  - write_disk is writing pointers at struct rather than values.
  - freeblock doesn't work
  - overwritten data isn't completely overwritten (if previous was larger.)
+ - data is overwritten after claim_free_block()

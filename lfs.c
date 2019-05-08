@@ -143,7 +143,7 @@ int write_inode(struct lfs_inode *inode, int block){
 	}
 	total+=count;
 
-	printf("writing extra data, block 1 set to %d sizeof is %ld\n",inode->extra_data[1],sizeof(inode->extra_data));
+	printf("writing extra data, extra_data[1]=%d sizeof is %ld\n",inode->extra_data[1],sizeof(inode->extra_data));
 	count = write(disk, inode->extra_data, sizeof(inode->extra_data));
 	if (count == -1){
 		printf("failed to write at %ld\n",loffset);
@@ -233,7 +233,7 @@ int read_inode(struct lfs_inode *inode, int block){
 		return -errno;
 	}
 	total+=count;
-	printf("read extra data, block 1 set to %d sizeof is %ld\n",inode->extra_data[1],sizeof(inode->extra_data));
+	printf("read extra data, extra_data[1]=%d sizeof is %ld\n",inode->extra_data[1],sizeof(inode->extra_data));
 
 	count = read(disk, &(inode->dp), sizeof(inode->dp));
 	if (count == -1){
@@ -479,12 +479,12 @@ int path_to_inode(const char *path, struct lfs_inode *cur_inode){
 const char* path_to_folder(const char *path)
 {
 	char delim[] = "/";
-
+	printf("getting deepest dir in %s\n",path);
 	char *ptr = strtok(path, delim);
-
 	// is there a better way than a double call to strtok?
 	while(ptr != NULL)
 	{
+		printf("path_to_folder %s\n",ptr);
 		if (strtok(NULL, delim) == NULL){
 			return ptr;
 		}
@@ -514,6 +514,9 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 	inode = malloc(BLOCK_SIZE);
 	res = path_to_inode(path,inode);
 	printf("getattr path_to_inode res=%d\n",res);
+	if (res == -1){
+		return -ENOENT;
+	}
 	// validate that the found inode is the one the path points to (does it exist?)
 	printf("getting intended filename\n");
 	filename = path_to_folder(path);
@@ -679,10 +682,14 @@ int lfs_mkdir(const char *path, mode_t mode){
 	struct lfs_inode *cur_inode;
 	struct lfs_inode *new_inode;
 	const char *filename;
+	char *filepath;
 	int slot, block;
 	cur_inode = malloc(BLOCK_SIZE);
-	path_to_inode(path, cur_inode);
-	filename = path_to_folder(path);
+	filepath = malloc(sizeof(path)); // don't want to change const.
+	memcpy(filepath,path,sizeof(path));
+	path_to_inode(filepath, cur_inode);
+	memcpy(filepath,path,sizeof(path));
+	filename = path_to_folder(filepath);
 	printf("creating in directory: %s\n", cur_inode->filename);
 	printf("name of new dir: %s\n",filename);
 
@@ -698,6 +705,8 @@ int lfs_mkdir(const char *path, mode_t mode){
 	if (block == -1){
 		return -1;
 	}
+	// update cur_inode after having claimed a block in root.
+	read_inode(cur_inode,0);
 	printf("using slot %d and block %d\n", slot, block);
 
 	new_inode = malloc(BLOCK_SIZE);
