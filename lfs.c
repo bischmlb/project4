@@ -483,7 +483,7 @@ const char* path_to_folder(const char *path){
 
 	last_slash = find_slash(path, 0);
 	folder = malloc(strlen(path));
-	memcpy(folder,path+last_slash+1,strlen(path)-last_slash-1);
+	memcpy(folder,path+last_slash+sizeof(char),strlen(path)-last_slash-sizeof(char));
 
 	printf("Folder name: %s\n", folder);
 	return folder;
@@ -511,17 +511,17 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 	filepath = malloc(strlen(path)); // don't want to change const.
 	memcpy(filepath,path,strlen(path));
 	res = path_to_inode(filepath,inode);
+	free(filepath);
 	printf("getattr path_to_inode res=%d\n",res);
 	if (res == -1){
-		free(filepath);
 		return -ENOENT;
 	}
 	// validate that the found inode is the one the path points to (does it exist?)
 
 	printf("getting intended filename\n");
-	free(filepath);
 	filepath = malloc(strlen(path));
 	memcpy(filepath,path,strlen(path));
+	printf("fp after copy %s\n",filepath);
 	filename = path_to_folder(filepath);
 	printf("comparing to found inode\n");
 	printf("comparing path to %s\n",filename);
