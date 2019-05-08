@@ -165,7 +165,7 @@ int read_inode(struct lfs_inode *inode, int block){
 
 	open_disk();
 	if (disk == -1){
-		printf("failed to read to disk, not open");
+		printf("failed to read to disk, not open\n");
 		close_disk();
 		return -errno;
 	}
@@ -483,7 +483,7 @@ const char* path_to_folder(const char *path){
 
 	last_slash = find_slash(path, 0);
 	folder = malloc(strlen(path));
-	memcpy(folder,path+last_slash+sizeof(char),strlen(path)-last_slash-sizeof(char));
+	memcpy(folder,path+last_slash+1,strlen(path)-last_slash-1);
 
 	printf("Folder name: %s\n", folder);
 	return folder;
@@ -567,9 +567,9 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 	struct lfs_inode *dir_inode;
 	printf("readdir: (path=%s)\n", path);
 
-	if(strcmp(path, "/") != 0){
+	/*if(strcmp(path, "/") != 0){
 		return -ENOENT;
-	}
+	} */
 
 	filler(buf, ".", NULL, 0);
 	filler(buf, "..", NULL, 0);
@@ -583,8 +583,8 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 		if (cur_inode->data_blocks[i] == 0){
 			break;
 		}
-		// read referenced inode called filler() on filename.
 		count = read_inode(dir_inode, cur_inode->data_blocks[i]);
+		// read referenced inode called filler() on filename.
 		if (count == -1){
 			perror("read failed in readdir loop");
 			return -ENOENT;
