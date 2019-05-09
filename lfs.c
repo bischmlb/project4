@@ -288,7 +288,7 @@ int disk_init(){
 		root_inode->mode = S_IFDIR | 0755;
 		root_inode->size = BLOCK_SIZE;
 		root_inode->uid = 1;
-		memcpy(root_inode->filename,"/",1);
+		strcpy(root_inode->filename,"/");
 		root_inode->last_modified = time(NULL);
 		root_inode->created = time(NULL);
 		memset(root_inode->extra_data,1,1);
@@ -480,11 +480,11 @@ int path_to_inode(const char *path, struct lfs_inode *cur_inode){
 const char* path_to_folder(const char *path){
 	int last_slash;
 	char *folder;
-
+	printf("path before find_slash %s\n",path);
 	last_slash = find_slash(path, 0);
 	folder = malloc(strlen(path)-last_slash-1);
-	memcpy(folder,path+last_slash+1,strlen(path)-last_slash-1);
-
+	strcpy(folder,path+last_slash+1);
+	printf("path %s, folder %s, slash %d\n",path,folder, last_slash);
 	printf("Folder name: %s\n", folder);
 	return folder;
 }
@@ -509,7 +509,7 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 
 	inode = malloc(BLOCK_SIZE);
 	filepath = malloc(strlen(path)); // don't want to change const.
-	memcpy(filepath,path,strlen(path));
+	strcpy(filepath,path);
 	res = path_to_inode(filepath,inode);
 	free(filepath);
 	printf("getattr path_to_inode res=%d\n",res);
@@ -520,7 +520,7 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 
 	printf("getting intended filename\n");
 	filepath = malloc(strlen(path));
-	memcpy(filepath,path,strlen(path));
+	strcpy(filepath,path);
 	printf("fp after copy %s\n",filepath);
 	filename = path_to_folder(filepath);
 	printf("comparing to found inode\n");
@@ -693,10 +693,12 @@ int lfs_mkdir(const char *path, mode_t mode){
 	res = 0;
 	cur_inode = malloc(BLOCK_SIZE);
 	filepath = malloc(strlen(path)); // don't want to change const.
-	memcpy(filepath,path,strlen(path));
+	strcpy(filepath,path);
+	printf("mkdir filepath %s, path %s\n",filepath,path);
 	path_to_inode(filepath, cur_inode);
 	cur_block = cur_inode->uid - 1;
-	memcpy(filepath,path,strlen(path));
+	strcpy(filepath,path);
+	printf("mkdir2 filepath %s, path %s\n",filepath,path);
 	filename = path_to_folder(filepath);
 
 	printf("creating in directory: %s\n", cur_inode->filename);
@@ -729,7 +731,7 @@ int lfs_mkdir(const char *path, mode_t mode){
 	new_inode->size = BLOCK_SIZE;
 	new_inode->uid = block + 1; // root inode at block 0 is #1
 	//new_inode->filename = malloc(strlen(filename));
-	memcpy(new_inode->filename,filename,strlen(filename)); // magic number
+	strcpy(new_inode->filename,filename); // magic number
 	new_inode->last_modified = time(NULL);
 	new_inode->created = time(NULL);
 	printf("writing new inode to disk at block %d\n",block);
