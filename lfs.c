@@ -515,6 +515,16 @@ int path_to_parent(const char *path, struct lfs_inode *cur_inode, struct lfs_ino
 	// iterate over each directory name seperated by /
 	// REMEMBER TO ADD SUPPORT FOR INDIRECT FILES / DIRS.
 	while(slicer != NULL){
+
+		// do we have the parent already?
+		for (i=0; i<15; i++){
+			if (cur_inode->data_blocks[i] == this_inode->uid -1){
+				printf("cur_inode: %s, this_inode %s\n", cur_inode->filename, this_inode->filename);
+				free(new_inode);
+				return 0;
+			}
+		}
+
 		found = 0;
 		for (i=0; i<15 && found != 1; i++){
 			//printf("about to check a data_blocks index %d\n",i);
@@ -537,15 +547,6 @@ int path_to_parent(const char *path, struct lfs_inode *cur_inode, struct lfs_ino
 				//printf("yep, they're equal\n");
 				memcpy(cur_inode, new_inode, BLOCK_SIZE); // set cur inode.
 				found = 1; // only stop this loop.
-			}
-		}
-		printf("cur_inode: %s, this_inode %s\n", cur_inode->filename, this_inode->filename);
-
-		for (i=0; i<15; i++){
-			if (cur_inode->data_blocks[i] == this_inode->uid -1){
-				printf("cur_inode: %s, this_inode %s\n", cur_inode->filename, this_inode->filename);
-				free(new_inode);
-				return 0;
 			}
 		}
 		slicer = strtok(NULL, delim);
