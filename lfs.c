@@ -728,7 +728,7 @@ int lfs_mkdir(const char *path, mode_t mode){
 	new_inode->mode = mode;
 	new_inode->size = BLOCK_SIZE;
 	new_inode->uid = block + 1; // root inode at block 0 is #1
-	new_inode->filename = malloc(strlen(filename));
+	//new_inode->filename = malloc(strlen(filename));
 	memcpy(new_inode->filename,filename,strlen(filename)); // magic number
 	new_inode->last_modified = time(NULL);
 	new_inode->created = time(NULL);
