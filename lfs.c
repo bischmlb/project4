@@ -482,7 +482,7 @@ const char* path_to_folder(const char *path){
 	char *folder;
 
 	last_slash = find_slash(path, 0);
-	folder = malloc(strlen(path));
+	folder = malloc(strlen(path)-last_slash-1);
 	memcpy(folder,path+last_slash+1,strlen(path)-last_slash-1);
 
 	printf("Folder name: %s\n", folder);
