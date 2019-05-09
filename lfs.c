@@ -576,7 +576,7 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 
 	cur_inode = malloc(BLOCK_SIZE);
 	path_to_inode(path, cur_inode);
-
+	printf("readdir called in %s node\n",cur_inode->filename);
 	dir_inode = malloc(BLOCK_SIZE);
 	// REMEMBER TO ADD SUPPORT FOR INDIRECT FILES / DIRS.
 	for (i=0; i<15; i++){
@@ -589,7 +589,7 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 			perror("read failed in readdir loop");
 			return -ENOENT;
 		}
-		printf("read %d, from %s gonna fill\n", count, cur_inode->filename);
+		printf("read %d, from %s at ref #%dgonna fill\n", count, cur_inode->filename, i);
 		printf("filling with %s\n",dir_inode->filename);
 		filler(buf,dir_inode->filename, NULL, 0);
 		printf("filled\n");
@@ -732,6 +732,7 @@ int lfs_mkdir(const char *path, mode_t mode){
 	new_inode->uid = block + 1; // root inode at block 0 is #1
 	//new_inode->filename = malloc(strlen(filename));
 	strcpy(new_inode->filename,filename); // magic number
+	memset(new_inode->data_blocks,0,sizeof(new_inode->data_blocks));
 	new_inode->last_modified = time(NULL);
 	new_inode->created = time(NULL);
 	printf("writing new inode to disk at block %d\n",block);
