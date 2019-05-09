@@ -256,13 +256,6 @@ int read_inode(struct lfs_inode *inode, int block){
 	return total;
 }
 
-int lfs_mknod(const char *path, mode_t mode, dev_t dev){
-	printf("mknod called\n");
-
-
-	return 0;
-}
-
 // seems to be needed for echo and nano
 int lfs_truncate(const char *path, off_t size, struct fuse_file_info *fi){
 /*	const void *msg = "testing\n";
@@ -535,8 +528,16 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 		return -ENOENT;
 	}
 	if (0==0){
-		stbuf->st_mode=S_IFDIR | 0755;//inode->mode;
-		stbuf->st_nlink=2;
+		stbuf->st_mode=inode->mode;
+		if (S_ISREG(inode->mode)){
+				stbuf->st_nlink=1;
+				stbuf->st_size=inode->size;
+		} else if (S_ISDIR(inode->mode)){
+				stbuf->st_nlink=2;
+		} else {
+			printf("some other type lmao %d\n",inode->mode);
+			return -ENOENT;
+		}
 		//stbuf->st_size=inode->size;
 		printf("found dir, returning 0\n");
 		free(filepath);
@@ -680,6 +681,74 @@ int claim_free_block(){
 		}
 	}
 	return -1; // not found.
+}
+
+int lfs_mknod(const char *path, mode_t mode, dev_t dev){
+	printf("mknod path: %s\n", path);
+	struct lfs_inode *cur_inode;
+	struct lfs_inode *new_inode;
+	const char *filename;
+	char *filepath;
+	int slot, block, cur_block, res;
+	res = 0;
+	cur_inode = malloc(BLOCK_SIZE);
+	filepath = malloc(strlen(path)); // don't want to change const.
+	strcpy(filepath,path);
+	printf("mknod filepath %s, path %s\n",filepath,path);
+	path_to_inode(filepath, cur_inode);
+	cur_block = cur_inode->uid - 1;
+	strcpy(filepath,path);
+	printf("mknod filepath %s, path %s\n",filepath,path);
+	filename = path_to_folder(filepath);
+
+	printf("creating in directory: %s\n", cur_inode->filename);
+	printf("name of new file: %s\n",filename);
+
+	// find slot for new inode in data_blocks[15]
+	// choose free block (how do we find this?)
+	// create new inode and write it to disk at free block.
+	// update list of free blocks.
+	slot = get_inode_slot(cur_inode);
+	if (slot == -1){
+		res = -1;
+	}
+	block = claim_free_block();
+	if (block == -1){
+		res = -1;
+	}
+	if (res == -1){
+		free(cur_inode);
+		free(filepath);
+		printf("Once of these failed: block: %d, slot: %d\n",block,slot);
+		return res;
+	}
+	// update cur_inode after having claimed a block in root.
+	read_inode(cur_inode,cur_block);
+	printf("using slot %d and block %d\n", slot, block);
+
+	new_inode = malloc(BLOCK_SIZE);
+	new_inode->mode = mode;
+	new_inode->size = BLOCK_SIZE;
+	new_inode->uid = block + 1; // root inode at block 0 is #1
+	//new_inode->filename = malloc(strlen(filename));
+	strcpy(new_inode->filename,filename); // magic number
+	memset(new_inode->data_blocks,0,sizeof(new_inode->data_blocks));
+	new_inode->last_modified = time(NULL);
+	new_inode->created = time(NULL);
+	printf("writing new inode to disk at block %d\n",block);
+	//write_disk(block, new_inode, 0, BLOCK_SIZE);
+	write_inode(new_inode,block);
+
+	// how do we know what block this is on?
+	cur_inode->data_blocks[slot] = block;
+	write_inode(cur_inode, cur_inode->uid - 1);
+	printf("Wrote to disk, node with name %s references block %d with name %s\n",cur_inode->filename,block,new_inode->filename);
+	// free inodes
+	free(cur_inode);
+	free(new_inode);
+	free(filepath);
+
+	return 0; // not implemented.
 }
 
 int lfs_mkdir(const char *path, mode_t mode){
