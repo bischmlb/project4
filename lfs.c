@@ -728,8 +728,8 @@ int lfs_mkdir(const char *path, mode_t mode){
 	new_inode->mode = mode;
 	new_inode->size = BLOCK_SIZE;
 	new_inode->uid = block + 1; // root inode at block 0 is #1
-	memset(new_inode->filename,0,sizeof(char)*32);
-	memcpy(new_inode->filename,filename,32); // magic number
+	new_inode->filename = malloc(strlen(filename));
+	memcpy(new_inode->filename,filename,strlen(filename)); // magic number
 	new_inode->last_modified = time(NULL);
 	new_inode->created = time(NULL);
 	printf("writing new inode to disk at block %d\n",block);
