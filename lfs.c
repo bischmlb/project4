@@ -22,13 +22,14 @@ int lfs_mkdir(const char *path, mode_t mode);
 int lfs_mknod(const char *path, mode_t mode, dev_t dev);
 int lfs_truncate(const char *path, off_t size, struct fuse_file_info *fi);
 int lfs_rmdir(const char *path);
+int lfs_unlink(const char *path);
 
 static struct fuse_operations lfs_oper = {
 	.getattr	= lfs_getattr,
 	.readdir	= lfs_readdir,
 	.mknod = lfs_mknod,
 	.mkdir = lfs_mkdir,
-	.unlink = NULL,
+	.unlink = lfs_unlink,
 	.rmdir = lfs_rmdir,
 	.truncate = lfs_truncate,
 	.open	= lfs_open,
@@ -45,7 +46,7 @@ struct lfs_inode {
 	int uid;
 	char filename[32];
 	time_t last_modified;
-	time_t created;
+	time_t last_accessed;
 	int data_blocks[15];
 	int dp;
 	char extra_data[313]; // used by root inode to track free blocks.
@@ -124,7 +125,7 @@ int write_inode(struct lfs_inode *inode, int block){
 	}
 	total+=count;
 
-	count = write(disk, &(inode->created), sizeof(inode->created));
+	count = write(disk, &(inode->last_accessed), sizeof(inode->last_accessed));
 	if (count == -1){
 		printf("failed to write at %ld\n",loffset);
 		close_disk();
@@ -223,7 +224,7 @@ int read_inode(struct lfs_inode *inode, int block){
 	}
 	total+=count;
 
-	count = read(disk, &(inode->created), sizeof(inode->created));
+	count = read(disk, &(inode->last_accessed), sizeof(inode->last_accessed));
 	if (count == -1){
 		printf("failed to read at %ld\n",loffset);
 		close_disk();
@@ -288,7 +289,7 @@ int disk_init(){
 		root_inode->uid = 1;
 		strcpy(root_inode->filename,"/");
 		root_inode->last_modified = time(NULL);
-		root_inode->created = time(NULL);
+		root_inode->last_accessed = time(NULL);
 		memset(root_inode->extra_data,1,1);
 		count = write_inode(root_inode, 0);
 		printf("root initial count: %d\n",count);
@@ -621,6 +622,8 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 	}
 	if (0==0){
 		stbuf->st_mode=inode->mode;
+		stbuf->st_atime=inode->last_accessed;
+		stbuf->st_mtime=inode->last_modified;
 		if (S_ISREG(inode->mode)){
 				stbuf->st_nlink=1;
 				stbuf->st_size=inode->size;
@@ -639,13 +642,6 @@ int lfs_getattr( const char *path, struct stat *stbuf ) {
 	if( strcmp( path, "/" ) == 0 ) {
 		stbuf->st_mode = S_IFDIR | 0755;
 		stbuf->st_nlink = 2;
-	}else if( strcmp( path, "/testdirectory" ) == 0 ) {
-		stbuf->st_mode = S_IFDIR | 0755;
-		stbuf->st_nlink = 2;
-	}else if( strcmp( path, "/hello" ) == 0 ) {
-		stbuf->st_mode = S_IFREG | 0777;
-		stbuf->st_nlink = 1;
-		stbuf->st_size = 12;
 	}else{
 		res = -ENOENT;
 	}
@@ -674,7 +670,7 @@ int lfs_readdir( const char *path, void *buf, fuse_fill_dir_t filler, off_t offs
 	// REMEMBER TO ADD SUPPORT FOR INDIRECT FILES / DIRS.
 	for (i=0; i<15; i++){
 		if (cur_inode->data_blocks[i] == 0){
-			break;
+			continue;
 		}
 		count = read_inode(dir_inode, cur_inode->data_blocks[i]);
 		// read referenced inode called filler() on filename.
@@ -720,6 +716,8 @@ int lfs_read( const char *path, char *buf, size_t size, off_t offset, struct fus
 				count = read_disk(cur_inode->data_blocks[i],buf + read, 0, MIN(BLOCK_SIZE,size - read));
 				printf("read %d from block %d\n",count,cur_inode->data_blocks[i]);
 				if (count == -1){
+					free(cur_inode);
+					free(filepath);
 					return -errno;
 				}
 				read+=count;
@@ -728,7 +726,12 @@ int lfs_read( const char *path, char *buf, size_t size, off_t offset, struct fus
 			break;
 		}
 	}
+	cur_inode->last_accessed = time(NULL);
+	write_inode(cur_inode, cur_inode->uid -1);
+
 	printf("Read: %d, buffer: %s\n",read,buf);
+	free(cur_inode);
+	free(filepath);
 	return read;
 }
 
@@ -759,6 +762,8 @@ int lfs_write( const char *path, char *buf, size_t size, off_t offset, struct fu
 		cur_inode->data_blocks[i] = claimed + i;
 		printf("claimed %d for slot %d\n",claimed+i,i);
 	}
+	cur_inode->size = size;
+	cur_inode->last_modified = time(NULL);
 	write_inode(cur_inode,cur_inode->uid - 1);
 
 	written = 0;
@@ -902,13 +907,13 @@ int lfs_mknod(const char *path, mode_t mode, dev_t dev){
 
 	new_inode = malloc(BLOCK_SIZE);
 	new_inode->mode = mode;
-	new_inode->size = BLOCK_SIZE;
+	new_inode->size = 0;
 	new_inode->uid = block + 1; // root inode at block 0 is #1
 	//new_inode->filename = malloc(strlen(filename));
 	strcpy(new_inode->filename,filename); // magic number
 	memset(new_inode->data_blocks,0,sizeof(new_inode->data_blocks));
 	new_inode->last_modified = time(NULL);
-	new_inode->created = time(NULL);
+	new_inode->last_accessed = time(NULL);
 	printf("writing new inode to disk at block %d\n",block);
 	//write_disk(block, new_inode, 0, BLOCK_SIZE);
 	write_inode(new_inode,block);
@@ -977,7 +982,7 @@ int lfs_mkdir(const char *path, mode_t mode){
 	strcpy(new_inode->filename,filename); // magic number
 	memset(new_inode->data_blocks,0,sizeof(new_inode->data_blocks));
 	new_inode->last_modified = time(NULL);
-	new_inode->created = time(NULL);
+	new_inode->last_accessed = time(NULL);
 	printf("writing new inode to disk at block %d\n",block);
 	//write_disk(block, new_inode, 0, BLOCK_SIZE);
 	write_inode(new_inode,block);
@@ -1034,7 +1039,7 @@ int lfs_rmdir(const char *path){
 	printf("RMDIR CALLED\n");
 
 	inode = malloc(BLOCK_SIZE);
-	parent = malloc(BLOCK_SIZE);
+
 	//path_to_inode(path,inode);
 
 	filepath = malloc(strlen(path)); // don't want to change const.
@@ -1043,8 +1048,16 @@ int lfs_rmdir(const char *path){
 	path_to_inode(filepath, inode);
 	strcpy(filepath,path);
 
-	path_to_parent(filepath,parent,inode);
+	for(i=0; i < 15; i++){
+		if(inode->data_blocks[i] != 0){
+			free(inode);
+			free(filepath);
+			return -ENOTEMPTY;
+		}
+	}
 
+	parent = malloc(BLOCK_SIZE);
+	path_to_parent(filepath,parent,inode);
 
 	for (i=0; i < 15; i++){
 		if (parent->data_blocks[i] == inode->uid - 1){
@@ -1062,6 +1075,52 @@ int lfs_rmdir(const char *path){
 	printf("After free_block\n");
 	free(inode);
 	free(parent);
+	free(filepath);
+	return 0;
+}
+
+int lfs_unlink(const char *path){
+	int i;
+	char *filepath;
+	struct lfs_inode *inode;
+	struct lfs_inode *parent;
+	printf("RMDIR CALLED\n");
+
+	inode = malloc(BLOCK_SIZE);
+	parent = malloc(BLOCK_SIZE);
+	//path_to_inode(path,inode);
+
+	filepath = malloc(strlen(path)); // don't want to change const.
+	strcpy(filepath,path);
+	printf("rmdir filepath %s, path %s\n",filepath,path);
+	path_to_inode(filepath, inode);
+	strcpy(filepath,path);
+
+	path_to_parent(filepath,parent,inode);
+
+
+	for (i=0; i < 15; i++){
+		if (parent->data_blocks[i] == inode->uid - 1){
+			parent->data_blocks[i] = 0;
+			printf("We got here");
+		}
+		if(inode->data_blocks[i] != 0){
+			free_block(inode->data_blocks[i]);
+		}
+	}
+	printf("%s   /   %s\n",parent->filename, inode->filename);
+	printf("We got here too \n");
+	write_inode(parent, parent->uid -1);
+
+
+	//frees the block the directory inode is on.
+	free_block(inode->uid - 1);
+
+
+	printf("After free_block\n");
+	free(inode);
+	free(parent);
+	free(filepath);
 	return 0;
 }
 
