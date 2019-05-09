@@ -4,10 +4,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <math.h>
 
 int disk_init();
 int open_disk();
 int close_disk();
+int claim_sequential_blocks(int);
+int claim_free_block();
 int lfs_getattr( const char *, struct stat * );
 int lfs_readdir( const char *, void *, fuse_fill_dir_t, off_t, struct fuse_file_info * );
 int lfs_open( const char *, struct fuse_file_info * );
@@ -53,7 +56,7 @@ struct root_data {
 */
 
 #define BLOCK_SIZE 4096
-
+#define MIN(a,b) (((a)<(b))?(a):(b))
 static int disk = -1;
 static char *diskPath = "disk";
 
@@ -613,22 +616,73 @@ int lfs_open( const char *path, struct fuse_file_info *fi ) {
 
 /* needs impl */
 int lfs_read( const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi ) {
-  printf("read: (path=%s)\n", path);
-	int count = read_disk(0,buf, offset, size);
-	if (count == -1){
-		return -errno;
+	struct lfs_inode *cur_inode;
+	char *filepath;
+	int i, read, count;
+	printf("read: (path=%s)\n", path);
+	cur_inode = malloc(BLOCK_SIZE);
+	filepath = malloc(strlen(path)); // don't want to change const.
+	strcpy(filepath,path);
+	path_to_inode(filepath, cur_inode);
+
+	read = 0;
+	for (i=0; i<15;i++){
+		if (cur_inode->data_blocks[i] != 0){
+				count = read_disk(cur_inode->data_blocks[i],buf + read, 0, MIN(BLOCK_SIZE,size - read));
+				printf("read %d from block %d\n",count,cur_inode->data_blocks[i]);
+				if (count == -1){
+					return -errno;
+				}
+				read+=count;
+		} else {
+			// no more data.
+			break;
+		}
 	}
-	return count;
+	printf("Read: %d, buffer: %s\n",read,buf);
+	return read;
 }
 
-/* needs impl */
+/* DOES NOT ACCOUNT FOR OFFSET */
 int lfs_write( const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi ) {
-  printf("write: (path=%s)\n", path);
-	int count = write_disk(0,buf, offset, size);
-	if (count == -1){
+	struct lfs_inode *cur_inode;
+	char *filepath;
+	int blocks, claimed, i, written, count;
+	printf("write: (path=%s)\n", path);
+	cur_inode = malloc(BLOCK_SIZE);
+	filepath = malloc(strlen(path)); // don't want to change const.
+	strcpy(filepath,path);
+	path_to_inode(filepath, cur_inode);
+
+	// FIND HIGHEST INDEX OF cur_inode->data_blocks AND SUBTRACT IT FROM BLOCKS, DONT CLAIM BLOCKS WE DON'T NEED.
+	// TAKE OFFSET INTO ACCOUNT, IF WE ARE WRITING AT THE 3RD BLOCK, WE WILL STILL NEED 3 PREVIOUS.
+	blocks = (size / BLOCK_SIZE) + 1;
+	printf("requesting %d blocks for %s (%ld)\n",blocks,cur_inode->filename,size);
+	claimed = claim_sequential_blocks(blocks);
+	if (claimed == -1){
+		free(cur_inode);
+		free(filepath);
+		printf("failed to claim blocks\n");
 		return -errno;
 	}
-	return count;
+	// update file inode.
+	for (i=0; i<blocks;i++){
+		cur_inode->data_blocks[i] = claimed + i;
+		printf("claimed %d for slot %d\n",claimed+i,i);
+	}
+	write_inode(cur_inode,cur_inode->uid - 1);
+
+	written = 0;
+	while (written < size){
+			// write at reach block, write from reach index and write a block if possible, but only if an entire block is available.
+			count = write_disk(claimed + floor(written/BLOCK_SIZE),buf+written,0,MIN(BLOCK_SIZE,size - written));
+			if (count == -1){
+				return -errno;
+			}
+			written+=count;
+			printf("Wrote %d/%ld to file %s\n",written,size,cur_inode->filename);
+	}
+	return written;
 }
 
 int lfs_release(const char *path, struct fuse_file_info *fi) {
@@ -648,6 +702,37 @@ int get_inode_slot(struct lfs_inode *inode){
 		}
 	}
 	return -1;
+}
+
+int claim_sequential_blocks(int blocks){
+	int count, i, found;
+	struct lfs_inode *root_inode;
+	char taken = 1;
+	root_inode = malloc(BLOCK_SIZE);
+	count = read_inode(root_inode, 0);
+	if (count == -1){
+		return -1;
+	}
+	found = 0;
+	for (i=0; i<2500;i++){
+		if (root_inode->extra_data[i] == 0){ // found free
+			found++;
+			if (found == blocks){
+				memcpy(root_inode->extra_data + i + 1 - blocks,&taken,blocks);
+
+				count = write_inode(root_inode, 0); // update on disk.
+				if (count == -1){
+					return -1;
+				}
+				free(root_inode);
+				printf("Updated root. Block %d-%d taken, wrote %d bytes\n",i + 1 -blocks,i,count);
+				return i;
+			}
+		} else {
+			found = 0;
+		}
+	}
+	return -1; // not found.
 }
 
 // find single block. Use get_contigous_blocks() for sequential free blocks.
@@ -796,7 +881,7 @@ int lfs_mkdir(const char *path, mode_t mode){
 	printf("using slot %d and block %d\n", slot, block);
 
 	new_inode = malloc(BLOCK_SIZE);
-	new_inode->mode = mode;
+	new_inode->mode = mode | S_IFDIR;
 	new_inode->size = BLOCK_SIZE;
 	new_inode->uid = block + 1; // root inode at block 0 is #1
 	//new_inode->filename = malloc(strlen(filename));
